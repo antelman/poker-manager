@@ -1,0 +1,15 @@
+{
+  "name": "poker-manager",
+  "version": "1.0.0",
+  "description": "ניהול ערב פוקר בין חברים - כניסות, ספירת ז'יטונים וחישוב מי משלם למי",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/",
+    "start": "node scripts/serve.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

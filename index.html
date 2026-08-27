@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1512">
+<meta name="description" content="ניהול ערב פוקר בין חברים - כניסות, ספירת ז'יטונים וחישוב מי משלם למי">
+<title>ניהול משחק פוקר</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="פוקר">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1 class="brand"><span class="brand-chip" aria-hidden="true"></span> ערב פוקר</h1>
+    <div class="pot" id="potSummary">
+      <span class="pot-label">בקופה</span>
+      <strong class="pot-value" id="potValue">0</strong>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ===================== משחק ===================== -->
+  <section class="view" id="view-game" aria-label="ניהול המשחק">
+
+    <details class="card settings" id="settingsCard">
+      <summary class="settings-summary">
+        <span>הגדרות המשחק</span>
+        <span class="settings-preview" id="settingsPreview"></span>
+      </summary>
+      <div class="settings-body">
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">עלות כניסה</span>
+            <input type="number" id="buyInInput" inputmode="decimal" min="0" step="1" value="50">
+          </label>
+          <label class="field">
+            <span class="field-label">מטבע</span>
+            <select id="currencyInput">
+              <option value="₪">₪ שקל</option>
+              <option value="$">$ דולר</option>
+              <option value="€">€ אירו</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span class="field-label">שיטת ספירה בסוף</span>
+            <select id="modeInput">
+              <option value="chips">ז'יטונים</option>
+              <option value="cash">סכום כסף</option>
+            </select>
+          </label>
+          <label class="field" id="chipsField">
+            <span class="field-label">ז'יטונים בכניסה</span>
+            <input type="number" id="chipsInput" inputmode="numeric" min="1" step="1" value="100">
+          </label>
+        </div>
+
+        <p class="hint" id="chipValueHint"></p>
+      </div>
+    </details>
+
+    <div class="card">
+      <form class="add-player" id="addPlayerForm">
+        <input type="text" id="playerNameInput" placeholder="שם השחקן" autocomplete="off"
+               enterkeyhint="done" maxlength="24" aria-label="שם השחקן">
+        <button type="submit" class="btn btn-primary">הוסף</button>
+      </form>
+      <label class="checkbox">
+        <input type="checkbox" id="autoBuyIn" checked>
+        <span>לחייב כניסה אוטומטית בהוספת שחקן</span>
+      </label>
+    </div>
+
+    <div id="playersList" class="players"></div>
+
+    <div class="card totals" id="gameTotals"></div>
+
+    <div class="card danger-zone">
+      <button class="btn btn-ghost" id="resetGameBtn">איפוס המשחק</button>
+    </div>
+  </section>
+
+  <!-- ===================== ספירה ===================== -->
+  <section class="view" id="view-count" aria-label="ספירת סיום" hidden>
+    <div class="card intro">
+      <h2 class="card-title">ספירת סיום</h2>
+      <p class="hint" id="countHint"></p>
+    </div>
+    <div id="countList" class="players"></div>
+    <div class="card" id="countStatus"></div>
+  </section>
+
+  <!-- ===================== חשבון ===================== -->
+  <section class="view" id="view-settle" aria-label="סיכום ותשלומים" hidden>
+    <div id="settleContent"></div>
+  </section>
+
+  <!-- ===================== היסטוריה ===================== -->
+  <section class="view" id="view-history" aria-label="היסטוריית משחקים" hidden>
+    <div id="historyContent"></div>
+  </section>
+
+</main>
+
+<nav class="tabbar" id="tabbar" aria-label="ניווט ראשי">
+  <button class="tab is-active" data-view="game" type="button">
+    <span class="tab-icon" aria-hidden="true">🃏</span><span class="tab-text">משחק</span>
+  </button>
+  <button class="tab" data-view="count" type="button">
+    <span class="tab-icon" aria-hidden="true">🪙</span><span class="tab-text">ספירה</span>
+  </button>
+  <button class="tab" data-view="settle" type="button">
+    <span class="tab-icon" aria-hidden="true">💸</span><span class="tab-text">חשבון</span>
+  </button>
+  <button class="tab" data-view="history" type="button">
+    <span class="tab-icon" aria-hidden="true">📜</span><span class="tab-text">היסטוריה</span>
+  </button>
+</nav>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
