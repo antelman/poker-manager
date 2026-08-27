@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/poker-game-manager-2mppp0, claude/system-font-display-issue-lcsoql]
+    branches: [main, claude/poker-game-manager-2mppp0]
   workflow_dispatch:
 
 permissions:
