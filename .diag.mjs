@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const page = await browser.newPage();
+const errs = [];
+page.on('pageerror', e => errs.push('PAGEERROR: ' + e.message));
+page.on('console', m => errs.push(m.type() + ': ' + m.text()));
+await page.goto('file:///home/user/poker-manager/dist/poker.html', { waitUntil: 'load' });
+await page.waitForTimeout(500);
+console.log('errors:', errs);
+console.log('has addPlayerForm:', await page.locator('#addPlayerForm').count());
+console.log('playersList html:', (await page.locator('#playersList').innerHTML()).slice(0,200));
+await browser.close();

@@ -6,7 +6,9 @@
   "private": true,
   "scripts": {
     "test": "node --test test/*.test.js",
-    "start": "node scripts/serve.js"
+    "start": "node scripts/serve.js",
+    "build": "node scripts/build-standalone.js",
+    "icons": "python3 scripts/make-icons.py"
   },
   "engines": {
     "node": ">=20"

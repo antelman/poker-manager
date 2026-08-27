@@ -22,6 +22,9 @@ const el = (tag, className, text) => {
   return node;
 };
 
+/** Hebrew counts read badly as "1 שחקנים", so singular gets its own wording. */
+const plural = (n, one, many) => (n === 1 ? one : `${n} ${many}`);
+
 const money = (cents) => `${state.game.currency}${fromCents(cents)}`;
 const signedMoney = (cents) =>
   `${cents > 0 ? '+' : cents < 0 ? '−' : ''}${state.game.currency}${fromCents(Math.abs(cents))}`;
@@ -49,9 +52,13 @@ function toast(message) {
  */
 function currentResults() {
   const computed = computeGame(state.game);
-  const adjusted = state.game.adjustment
-    ? distributeDiff(computed, state.game.adjustment)
-    : null;
+
+  // Only spread a counting error once the whole table is counted - applying it
+  // mid-count would dump everyone else's uncounted chips onto whoever is done.
+  const adjusted =
+    state.game.adjustment && computed.allCashedOut
+      ? distributeDiff(computed, state.game.adjustment)
+      : null;
 
   const players = computed.players.map((p) => {
     const outCents = adjusted ? adjusted[p.id] : p.outCents;
@@ -113,9 +120,16 @@ function renderSettings() {
       : 'בסוף המשחק כל שחקן מזין ישירות את סכום הכסף שנשאר לו.';
 }
 
-function emptyState(icon, message) {
-  const wrap = el('div', 'card empty');
-  wrap.append(el('span', 'empty-icon', icon), el('p', null, message));
+/** Empty state with one of the sprite icons from index.html. */
+function emptyCard(iconId, message) {
+  const wrap = el('div', 'panel empty');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'empty-icon');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#${iconId}`);
+  svg.append(use);
+  wrap.append(svg, el('p', null, message));
   return wrap;
 }
 
@@ -124,7 +138,7 @@ function renderPlayers() {
   list.textContent = '';
 
   if (state.game.players.length === 0) {
-    list.append(emptyState('🪑', 'עוד לא הוספת שחקנים. תוסיף את כולם למעלה ונתחיל.'));
+    list.append(emptyCard('i-chip', 'עוד לא הוספת שחקנים. תוסיף את כולם למעלה ונתחיל.'));
     return;
   }
 
@@ -140,7 +154,7 @@ function renderPlayers() {
       el(
         'div',
         'player-meta',
-        `${stats.buyInCount} כניסות · ${money(stats.inCents)}`
+        `${plural(stats.buyInCount, 'כניסה אחת', 'כניסות')} · ${money(stats.inCents)}`
       )
     );
 
@@ -217,7 +231,7 @@ function renderCount() {
       : 'כל שחקן מזין את סכום הכסף שנשאר לו על השולחן.';
 
   if (g.players.length === 0) {
-    list.append(emptyState('🪙', 'אין שחקנים עדיין. תחזור למסך "משחק" ותוסיף אותם.'));
+    list.append(emptyCard('i-stack', 'אין שחקנים עדיין. תחזור למסך "משחק" ותוסיף אותם.'));
     status.hidden = true;
     return;
   }
@@ -304,8 +318,15 @@ function renderCountStatus(status, counted) {
 
   if (counted < total) {
     const note = el('div', 'status warn');
+    const left = total - counted;
     note.append(el('div', 'status-title', 'עוד לא סיימתם לספור'));
-    note.append(el('div', null, `נשארו ${total - counted} שחקנים בלי ספירה.`));
+    note.append(
+      el(
+        'div',
+        null,
+        left === 1 ? 'נשאר שחקן אחד בלי ספירה.' : `נשארו ${left} שחקנים בלי ספירה.`
+      )
+    );
     status.append(note);
     return;
   }
@@ -372,7 +393,7 @@ function renderSettle() {
   root.textContent = '';
 
   if (state.game.players.length === 0) {
-    root.append(emptyState('💸', 'אין עדיין משחק לחשב. תוסיף שחקנים ותתחיל לשחק.'));
+    root.append(emptyCard('i-pay', 'אין עדיין משחק לחשב. תוסיף שחקנים ותתחיל לשחק.'));
     return;
   }
 
@@ -380,19 +401,26 @@ function renderSettle() {
   const counted = effective.players.filter((p) => p.cashedOut).length;
 
   if (counted === 0) {
-    root.append(emptyState('🪙', 'עוד לא נספרו ז\'יטונים. תעבור למסך "ספירה" כדי להזין כמה נשאר לכל אחד.'));
+    root.append(emptyCard('i-stack', 'עוד לא נספרו ז\'יטונים. תעבור למסך "ספירה" כדי להזין כמה נשאר לכל אחד.'));
     return;
   }
 
   if (counted < state.game.players.length) {
-    const warn = el('div', 'card status warn');
+    const warn = el('div', 'panel status warn');
+    const left = state.game.players.length - counted;
     warn.append(el('div', 'status-title', 'החישוב חלקי'));
     warn.append(
-      el('div', null, `${state.game.players.length - counted} שחקנים עוד לא נספרו, אז החשבון עוד ישתנה.`)
+      el(
+        'div',
+        null,
+        left === 1
+          ? 'שחקן אחד עוד לא נספר, אז החשבון עוד ישתנה.'
+          : `${left} שחקנים עוד לא נספרו, אז החשבון עוד ישתנה.`
+      )
     );
     root.append(warn);
   } else if (!effective.balanced) {
-    const warn = el('div', 'card status warn');
+    const warn = el('div', 'panel status warn');
     warn.append(el('div', 'status-title', 'הקופה לא מאוזנת'));
     warn.append(
       el(
@@ -407,7 +435,7 @@ function renderSettle() {
   /* ---- results table ---- */
   root.append(sectionHead('סיכום שחקנים', effective.balanced ? 'מאוזן' : 'לא מאוזן'));
 
-  const table = el('div', 'card list-card');
+  const table = el('div', 'panel list-card');
   leaderboard(effective).forEach((p, index) => {
     const row = el('div', 'result-row');
     row.append(el('span', 'result-rank', `${index + 1}`));
@@ -431,12 +459,12 @@ function renderSettle() {
   root.append(
     sectionHead(
       'מי משלם למי',
-      transfers.length === 0 ? 'אין תשלומים' : `${transfers.length} העברות`
+      transfers.length === 0 ? 'אין תשלומים' : plural(transfers.length, 'העברה אחת', 'העברות')
     )
   );
 
   if (transfers.length === 0) {
-    root.append(emptyState('🤝', 'כולם יצאו בדיוק באפס. אף אחד לא חייב לאף אחד.'));
+    root.append(emptyCard('i-pay', 'כולם יצאו בדיוק באפס. אף אחד לא חייב לאף אחד.'));
   } else {
     const paid = state.game.paid || {};
     for (const t of transfers) {
@@ -466,13 +494,13 @@ function renderSettle() {
   }
 
   /* ---- actions ---- */
-  const actions = el('div', 'card actions-grid');
+  const actions = el('div', 'panel actions-grid');
 
-  const share = el('button', 'btn btn-primary', '📤 שתף סיכום');
+  const share = el('button', 'btn btn-primary', 'שתף סיכום');
   share.type = 'button';
   share.dataset.action = 'share';
 
-  const copy = el('button', 'btn', '📋 העתק');
+  const copy = el('button', 'btn', 'העתק');
   copy.type = 'button';
   copy.dataset.action = 'copy';
 
@@ -480,7 +508,7 @@ function renderSettle() {
   root.append(actions);
 
   const finish = el('div', 'card');
-  const finishBtn = el('button', 'btn btn-primary btn-block btn-lg', '✅ סיים משחק ושמור בהיסטוריה');
+  const finishBtn = el('button', 'btn btn-primary btn-block btn-lg', 'סיים משחק ושמור בהיסטוריה');
   finishBtn.type = 'button';
   finishBtn.dataset.action = 'finish-game';
   finish.append(finishBtn);
@@ -506,14 +534,14 @@ function renderHistory() {
   root.textContent = '';
 
   if (state.history.length === 0) {
-    root.append(emptyState('📜', 'אין עדיין משחקים שמורים. כשתסיים משחק הוא יופיע כאן.'));
+    root.append(emptyCard('i-history', 'אין עדיין משחקים שמורים. כשתסיים משחק הוא יופיע כאן.'));
     return;
   }
 
-  root.append(sectionHead('משחקים קודמים', `${state.history.length} משחקים`));
+  root.append(sectionHead('משחקים קודמים', plural(state.history.length, 'משחק אחד', 'משחקים')));
 
   for (const game of state.history) {
-    const card = el('div', 'card history-item');
+    const card = el('div', 'panel history-item');
 
     const head = el('div', 'history-head');
     const date = new Date(game.endedAt || game.startedAt);
@@ -521,7 +549,11 @@ function renderHistory() {
       el('span', 'history-date', date.toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' }))
     );
     head.append(
-      el('span', 'history-meta', `${game.summary?.players?.length ?? 0} שחקנים · ${game.currency}${fromCents(game.summary?.totalInCents ?? 0)}`)
+      el(
+        'span',
+        'history-meta',
+        `${plural(game.summary?.players?.length ?? 0, 'שחקן אחד', 'שחקנים')} · ${game.currency}${fromCents(game.summary?.totalInCents ?? 0)}`
+      )
     );
     card.append(head);
 
@@ -544,8 +576,8 @@ function renderHistory() {
     root.append(card);
   }
 
-  const tools = el('div', 'card actions-grid');
-  const exportBtn = el('button', 'btn', '⬇️ ייצוא נתונים');
+  const tools = el('div', 'panel actions-grid');
+  const exportBtn = el('button', 'btn', 'ייצוא נתונים');
   exportBtn.type = 'button';
   exportBtn.dataset.action = 'export';
   tools.append(exportBtn);
@@ -860,6 +892,7 @@ $('tabbar').addEventListener('click', (event) => {
 
 /* ---- offline support ---- */
 
+/* sw:start - stripped from the single-file build, which has no sw.js beside it */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {
@@ -867,6 +900,7 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
+/* sw:end */
 
 /* ---- go ---- */
 

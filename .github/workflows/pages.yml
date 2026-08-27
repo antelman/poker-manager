@@ -24,18 +24,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The default GITHUB_TOKEN cannot turn Pages on, so the site has to be
+      # enabled once by hand (Settings -> Pages -> Source: GitHub Actions).
+      # Until that happens, skip the deploy with a warning instead of failing
+      # every push.
+      - name: Check whether Pages is enabled
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Pages not enabled::Enable GitHub Pages once under Settings > Pages with Source set to GitHub Actions, then re-run this workflow."
+          fi
+
       - name: Configure Pages
+        if: steps.check.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
-        with:
-          # Turn Pages on automatically the first time this runs.
-          enablement: true
 
       # The app is plain static files, so the repo root is the site.
       - name: Upload site
+        if: steps.check.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
 
       - name: Deploy
         id: deployment
+        if: steps.check.outputs.enabled == 'true'
         uses: actions/deploy-pages@v4
