@@ -751,31 +751,29 @@ const actions = {
 
   'pick-card'(_, target) {
     cardPickerSlot = Number(target.dataset.slot);
+    pickerRank = null;
+    pickerSuit = null;
     commit();
   },
 
   'close-picker'() {
-    cardPickerSlot = null;
-    commit();
+    closePicker();
   },
 
-  'choose-card'(_, target) {
-    if (!state.game.hand || cardPickerSlot === null) return;
-    const card = target.dataset.card;
-    const board = state.game.hand.board;
-    // A card can only be on the felt once.
-    const existing = board.indexOf(card);
-    if (existing !== -1) board[existing] = undefined;
-    board[cardPickerSlot] = card;
-    cardPickerSlot = null;
-    commit();
+  'choose-rank'(_, target) {
+    pickerRank = target.dataset.rank;
+    commitCardIfReady();
+  },
+
+  'choose-suit'(_, target) {
+    pickerSuit = target.dataset.suit;
+    commitCardIfReady();
   },
 
   'clear-card'() {
     if (!state.game.hand || cardPickerSlot === null) return;
     state.game.hand.board[cardPickerSlot] = undefined;
-    cardPickerSlot = null;
-    commit();
+    closePicker();
   },
 
   'bet-add'(id, target) {
@@ -1126,6 +1124,31 @@ const STREET_LABEL = {
 const STREET_CARDS = { preflop: 0, flop: 3, turn: 4, river: 5 };
 
 let cardPickerSlot = null;
+let pickerRank = null;
+let pickerSuit = null;
+
+function closePicker() {
+  cardPickerSlot = null;
+  pickerRank = null;
+  pickerSuit = null;
+  commit();
+}
+
+/** Write the card once both halves are chosen, in whichever order. */
+function commitCardIfReady() {
+  if (!pickerRank || !pickerSuit) {
+    commit();
+    return;
+  }
+  const hand = state.game.hand;
+  if (!hand || cardPickerSlot === null) return;
+
+  const card = pickerRank + pickerSuit;
+  const existing = hand.board.indexOf(card);
+  if (existing !== -1 && existing !== cardPickerSlot) hand.board[existing] = undefined;
+  hand.board[cardPickerSlot] = card;
+  closePicker();
+}
 
 function currentHand() {
   return state.game.hand || null;
@@ -1220,30 +1243,54 @@ function renderFelt(hand) {
   return felt;
 }
 
+/**
+ * Two steps instead of a 52-cell grid: pick the rank, pick the suit. Either
+ * order works, and the card commits as soon as both are chosen - which keeps
+ * every target big enough to hit on a phone.
+ */
 function renderCardPicker() {
   const picker = el('div', 'card-picker');
+
   const head = el('div', 'card-picker-head');
   head.append(el('span', null, `קלף ${cardPickerSlot + 1}`));
+  const preview = el('span', 'picker-preview');
+  if (pickerRank) preview.append(el('span', 'picker-preview-rank', pickerRank));
+  if (pickerSuit) {
+    const suit = SUITS.find((x) => x.id === pickerSuit);
+    const glyph = el('span', `picker-preview-suit ${'hd'.includes(pickerSuit) ? 'red' : 'black'}`, suit.glyph);
+    preview.append(glyph);
+  }
+  head.append(preview);
   const close = el('button', 'btn btn-ghost', 'סגור');
   close.type = 'button';
   close.dataset.action = 'close-picker';
   head.append(close);
   picker.append(head);
 
-  for (const suit of SUITS) {
-    const row = el('div', 'picker-row');
-    const label = el('span', `picker-suit ${'hd'.includes(suit.id) ? 'red' : 'black'}`, suit.glyph);
-    row.append(label);
-    for (const rank of RANKS) {
-      const b = el('button', `picker-card ${'hd'.includes(suit.id) ? 'red' : 'black'}`, rank);
-      b.type = 'button';
-      b.dataset.action = 'choose-card';
-      b.dataset.card = rank + suit.id;
-      b.setAttribute('aria-label', `${rank} ${suit.name}`);
-      row.append(b);
-    }
-    picker.append(row);
+  picker.append(el('span', 'field-label', 'ערך'));
+  const ranks = el('div', 'rank-grid');
+  for (const rank of RANKS) {
+    const b = el('button', `rank-btn${pickerRank === rank ? ' is-chosen' : ''}`, rank);
+    b.type = 'button';
+    b.dataset.action = 'choose-rank';
+    b.dataset.rank = rank;
+    ranks.append(b);
   }
+  picker.append(ranks);
+
+  picker.append(el('span', 'field-label', 'סימן'));
+  const suits = el('div', 'suit-grid');
+  for (const suit of SUITS) {
+    const red = 'hd'.includes(suit.id);
+    const b = el('button', `suit-btn ${red ? 'red' : 'black'}${pickerSuit === suit.id ? ' is-chosen' : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'choose-suit';
+    b.dataset.suit = suit.id;
+    b.append(el('span', 'suit-glyph', suit.glyph));
+    b.setAttribute('aria-label', suit.name);
+    suits.append(b);
+  }
+  picker.append(suits);
 
   const clear = el('button', 'btn btn-ghost btn-block', 'נקה את הקלף');
   clear.type = 'button';

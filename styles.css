@@ -114,6 +114,10 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* Author display rules on classes outrank the UA [hidden] rule, so state it
+   loudly once here; the board layout overrides it deliberately below. */
+[hidden] { display: none !important; }
+
 html {
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
@@ -793,7 +797,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .view-history { grid-area: history; }
 
   /* Tabs are a phone affordance; on the board everything is already visible. */
-  .view[hidden] { display: flex; }
+  .view[hidden] { display: flex !important; }
   .tabbar { display: none; }
   .toast { bottom: 28px; }
 
@@ -972,32 +976,73 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface-sunken);
-  padding: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
-.card-picker-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
-.picker-row { display: flex; gap: 4px; align-items: center; }
-.picker-suit { width: 20px; text-align: center; font-size: 1.1rem; flex: none; }
-.picker-suit.red, .picker-card.red { color: var(--lose); }
-.picker-suit.black, .picker-card.black { color: var(--text); }
+.card-picker-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 600; }
+.card-picker-head .btn { min-height: 38px; padding: 6px 14px; }
 
-.picker-card {
-  flex: 1;
-  min-width: 0;
-  min-height: 38px;
-  padding: 4px 2px;
-  font-size: .82rem;
+.picker-preview {
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-inline-start: auto;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.picker-preview-suit.red { color: var(--lose); }
+.picker-preview-suit.black { color: var(--text); }
+
+/* Ranks wrap onto as many rows as they need, never below a thumb-sized tap. */
+.rank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  gap: 6px;
+}
+
+.rank-btn {
+  min-height: 48px;
+  font-family: var(--serif);
+  font-size: 1.1rem;
   font-weight: 700;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: var(--surface);
+  color: var(--text);
   cursor: pointer;
+  padding: 0;
 }
 
-.picker-card:active { transform: scale(.94); }
+.rank-btn.is-chosen,
+.suit-btn.is-chosen {
+  background: var(--brass);
+  border-color: var(--brass-strong);
+  color: var(--on-brass);
+}
+
+.suit-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+
+.suit-btn {
+  min-height: 54px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.suit-glyph { font-size: 1.6rem; line-height: 1; }
+.suit-btn.red .suit-glyph { color: var(--lose); }
+.suit-btn.black .suit-glyph { color: var(--text); }
+.suit-btn.is-chosen .suit-glyph { color: var(--on-brass); }
+.rank-btn:active, .suit-btn:active { transform: scale(.95); }
 
 /* ---- bets ---- */
 
