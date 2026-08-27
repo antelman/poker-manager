@@ -72,6 +72,25 @@ function assertNoCollisions(chunks) {
   }
 }
 
+/**
+ * Replace every `url("fonts/x.woff2")` in the stylesheet with a base64 data
+ * URI. Missing a file is a build error rather than a silent fallback to the
+ * system font, which is exactly the failure this is here to prevent.
+ */
+async function inlineFonts(css) {
+  const references = [...css.matchAll(/url\("(fonts\/[^"]+\.woff2)"\)/g)];
+  if (references.length === 0) {
+    throw new Error('No fonts/*.woff2 references found in styles.css; the bundle would render in the system font.');
+  }
+
+  let inlined = css;
+  for (const [match, file] of references) {
+    const data = await readFile(join(ROOT, file));
+    inlined = inlined.replace(match, `url("data:font/woff2;base64,${data.toString('base64')}")`);
+  }
+  return inlined;
+}
+
 async function build() {
   const [html, css, engine, store, app] = await Promise.all([
     read('index.html'),
@@ -95,12 +114,9 @@ async function build() {
     .slice(html.indexOf('<body>') + '<body>'.length, html.indexOf('<script type="module"'))
     .trim();
 
-  const fonts =
-    '<link rel="preconnect" href="https://fonts.googleapis.com">\n' +
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
-    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">';
-
-  const bundled = `<style>\n${css}\n</style>\n\n${body}\n\n<script>\n${script}\n</script>\n`;
+  // A single file that needs the network for its typefaces is not standalone,
+  // so the woff2 subsets are baked into the stylesheet as data URIs.
+  const bundled = `<style>\n${await inlineFonts(css)}\n</style>\n\n${body}\n\n<script>\n${script}\n</script>\n`;
 
   const full = `<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -109,7 +125,6 @@ async function build() {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d1512">
 <title>ערב פוקר</title>
-${fonts}
 </head>
 <body>
 ${bundled}</body>
@@ -119,7 +134,6 @@ ${bundled}</body>
   // Hosts that wrap the content themselves get the direction set at runtime,
   // since there is no <html> tag here to carry dir="rtl".
   const embed = `<title>ערב פוקר</title>
-${fonts}
 <script>
   document.documentElement.lang = 'he';
   document.documentElement.dir = 'rtl';
