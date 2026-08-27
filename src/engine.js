@@ -182,3 +182,67 @@ export function distributeDiff(computed, mode = 'even') {
 export function leaderboard(computed) {
   return [...computed.players].sort((a, b) => b.netCents - a.netCents);
 }
+
+/* ==========================================================================
+   Live hand tracking
+   Chips are tracked so the table always knows what each player is sitting
+   behind, and so the end-of-night count can be filled in from the running
+   total instead of counting every stack by hand.
+   ========================================================================== */
+
+export const STREETS = ['preflop', 'flop', 'turn', 'river'];
+
+export function newHand(number = 1) {
+  return { n: number, street: 'preflop', board: [], bets: {}, open: true };
+}
+
+/** Chips a player received for the money they bought in with. */
+export function buyInChips(player, game) {
+  const count = (player.buyIns || []).length;
+  if (game.mode === 'cash') return 0;
+  return count * (Number(game.chipsPerBuyIn) || 0);
+}
+
+/** Everything wagered so far in the open hand. */
+export function handPot(hand) {
+  if (!hand) return 0;
+  return Object.values(hand.bets || {}).reduce((sum, n) => sum + (Number(n) || 0), 0);
+}
+
+/**
+ * What a player is sitting behind right now, in chips: the chips they bought,
+ * plus everything they have won or lost in completed hands, minus whatever
+ * they have already pushed into the pot of the hand in progress.
+ */
+export function playerStackChips(player, game) {
+  const settled = Number(player.chipsWon) || 0;
+  const inPot = Number(game.hand?.bets?.[player.id]) || 0;
+  return buyInChips(player, game) + settled - inPot;
+}
+
+/**
+ * Close the open hand, awarding the pot to the winners (split evenly, with the
+ * odd chip going to the first winner - the usual house rule).
+ *
+ * Returns the updated `chipsWon` per player; the caller writes them back.
+ */
+export function closeHand(game, winnerIds) {
+  const hand = game.hand;
+  const result = {};
+  for (const p of game.players) result[p.id] = Number(p.chipsWon) || 0;
+  if (!hand) return result;
+
+  for (const p of game.players) {
+    result[p.id] -= Number(hand.bets?.[p.id]) || 0;
+  }
+
+  const winners = (winnerIds || []).filter((id) => result[id] !== undefined);
+  const pot = handPot(hand);
+  if (winners.length === 0 || pot === 0) return result;
+
+  const share = Math.floor(pot / winners.length);
+  for (const id of winners) result[id] += share;
+  result[winners[0]] += pot - share * winners.length;
+
+  return result;
+}

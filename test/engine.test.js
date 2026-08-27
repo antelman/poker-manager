@@ -219,3 +219,90 @@ test('end to end: three players, rebuys, settles to zero', () => {
   assert.equal(transfers[0].to, 'Roi');
   assert.equal(transfers[0].amountCents, 8000);
 });
+
+/* ---------------------------------------------------------- hand tracking */
+
+import { newHand, buyInChips, handPot, playerStackChips, closeHand } from '../src/engine.js';
+
+const handGame = (players, hand) => ({
+  mode: 'chips',
+  buyInCents: 5000,
+  chipsPerBuyIn: 100,
+  players,
+  hand,
+});
+
+test('buyInChips converts buy-ins into a starting stack', () => {
+  const g = handGame([player('a', 'A', [5000, 5000], null)]);
+  assert.equal(buyInChips(g.players[0], g), 200);
+});
+
+test('handPot totals what is in the middle', () => {
+  assert.equal(handPot(newHand()), 0);
+  assert.equal(handPot({ bets: { a: 30, b: 30, c: 15 } }), 75);
+  assert.equal(handPot(null), 0);
+});
+
+test('playerStackChips subtracts the live bet and adds past results', () => {
+  const p = { id: 'a', name: 'A', buyIns: [5000], chipsWon: 40 };
+  const g = handGame([p], { bets: { a: 25 } });
+  assert.equal(playerStackChips(p, g), 100 + 40 - 25);
+});
+
+test('closeHand moves the pot to the winner and conserves chips', () => {
+  const players = [
+    { id: 'a', name: 'A', buyIns: [5000], chipsWon: 0 },
+    { id: 'b', name: 'B', buyIns: [5000], chipsWon: 0 },
+    { id: 'c', name: 'C', buyIns: [5000], chipsWon: 0 },
+  ];
+  const g = handGame(players, { bets: { a: 30, b: 30, c: 10 } });
+
+  const after = closeHand(g, ['a']);
+  assert.equal(after.a, 40); // paid 30, won the 70 pot
+  assert.equal(after.b, -30);
+  assert.equal(after.c, -10);
+  assert.equal(after.a + after.b + after.c, 0);
+});
+
+test('closeHand splits a pot and gives the odd chip to the first winner', () => {
+  const players = [
+    { id: 'a', name: 'A', buyIns: [5000], chipsWon: 0 },
+    { id: 'b', name: 'B', buyIns: [5000], chipsWon: 0 },
+    { id: 'c', name: 'C', buyIns: [5000], chipsWon: 0 },
+  ];
+  const g = handGame(players, { bets: { a: 25, b: 25, c: 25 } });
+
+  const after = closeHand(g, ['a', 'b']);
+  assert.equal(after.a + after.b + after.c, 0);
+  assert.equal(after.a, 13); // 75 pot split 38/37, minus the 25 each paid
+  assert.equal(after.b, 12);
+  assert.equal(after.c, -25);
+});
+
+test('closeHand with no winner just returns the bets as losses', () => {
+  const players = [{ id: 'a', name: 'A', buyIns: [5000], chipsWon: 5 }];
+  const g = handGame(players, { bets: { a: 20 } });
+  assert.equal(closeHand(g, []).a, -15);
+});
+
+test('chips are conserved across a run of hands', () => {
+  const players = [
+    { id: 'a', name: 'A', buyIns: [5000], chipsWon: 0 },
+    { id: 'b', name: 'B', buyIns: [5000], chipsWon: 0 },
+  ];
+  const g = handGame(players, null);
+
+  for (const [bets, winner] of [
+    [{ a: 10, b: 10 }, 'a'],
+    [{ a: 45, b: 20 }, 'b'],
+    [{ a: 5, b: 5 }, 'a'],
+  ]) {
+    g.hand = { bets };
+    const after = closeHand(g, [winner]);
+    for (const p of g.players) p.chipsWon = after[p.id];
+  }
+
+  g.hand = null;
+  const total = g.players.reduce((s, p) => s + playerStackChips(p, g), 0);
+  assert.equal(total, 200); // nothing created, nothing destroyed
+});

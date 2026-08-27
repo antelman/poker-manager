@@ -5,9 +5,15 @@ import {
   settle,
   distributeDiff,
   leaderboard,
+  newHand,
+  handPot,
+  playerStackChips,
+  closeHand,
+  buyInChips,
 } from './src/engine.js';
 
 import { load, save, archive, newGame, newPlayer, exportJSON } from './src/store.js';
+import { createSync, newGameCode } from './src/sync.js';
 
 /* ------------------------------------------------------------------ state */
 
@@ -90,6 +96,7 @@ function render() {
   renderTopBar();
   renderSettings();
   renderPlayers();
+  renderRound();
   renderTotals();
   renderCount();
   renderSettle();
@@ -270,6 +277,17 @@ function renderCount() {
 
     row.append(main, field, quick);
     list.append(row);
+  }
+
+  const tracked = state.game.players.some((p) => Number(p.chipsWon) !== 0);
+  if (tracked && state.game.mode === 'chips') {
+    const fill = el('button', 'btn btn-block', 'מלא את הספירה לפי מעקב הסיבובים');
+    fill.type = 'button';
+    fill.dataset.action = 'fill-from-tracking';
+    const wrap = el('div', 'panel');
+    wrap.append(fill);
+    wrap.append(el('p', 'hint', 'ממלא לכל שחקן את מה שהמעקב אומר שיש לו. אפשר לתקן ידנית אחר כך.'));
+    list.prepend(wrap);
   }
 
   renderCountStatus(status, counted);
@@ -710,6 +728,174 @@ const actions = {
     commit();
   },
 
+
+  /* ---- the round ---- */
+
+  'start-hand'() {
+    const last = state.game.hand?.n ?? 0;
+    state.game.hand = newHand(last + 1);
+    commit();
+  },
+
+  'cancel-hand'() {
+    if (!confirm('לבטל את הסיבוב? ההימורים שהוזנו יימחקו ולא ייזקפו לאף אחד.')) return;
+    state.game.hand = null;
+    commit();
+  },
+
+  'set-street'(_, target) {
+    if (!state.game.hand) return;
+    state.game.hand.street = target.dataset.street;
+    commit();
+  },
+
+  'pick-card'(_, target) {
+    cardPickerSlot = Number(target.dataset.slot);
+    commit();
+  },
+
+  'close-picker'() {
+    cardPickerSlot = null;
+    commit();
+  },
+
+  'choose-card'(_, target) {
+    if (!state.game.hand || cardPickerSlot === null) return;
+    const card = target.dataset.card;
+    const board = state.game.hand.board;
+    // A card can only be on the felt once.
+    const existing = board.indexOf(card);
+    if (existing !== -1) board[existing] = undefined;
+    board[cardPickerSlot] = card;
+    cardPickerSlot = null;
+    commit();
+  },
+
+  'clear-card'() {
+    if (!state.game.hand || cardPickerSlot === null) return;
+    state.game.hand.board[cardPickerSlot] = undefined;
+    cardPickerSlot = null;
+    commit();
+  },
+
+  'bet-add'(id, target) {
+    const hand = state.game.hand;
+    if (!hand) return;
+    const amount = Number(target.dataset.amount) || 0;
+    hand.bets[id] = (Number(hand.bets[id]) || 0) + amount;
+    commit();
+  },
+
+  'bet-clear'(id) {
+    if (!state.game.hand) return;
+    delete state.game.hand.bets[id];
+    commit();
+  },
+
+  'close-hand'() {
+    const hand = state.game.hand;
+    if (!hand) return;
+    const pot = handPot(hand);
+    if (pot === 0) {
+      alert('אין כלום בקופה. תזין הימורים או תבטל את הסיבוב.');
+      return;
+    }
+
+    const contenders = state.game.players.filter((p) => (hand.bets?.[p.id] || 0) > 0);
+    const pool = contenders.length > 0 ? contenders : state.game.players;
+    const names = pool.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+    const answer = prompt(
+      `מי לקח את הקופה של ${pot}?\nתכתוב מספר, או כמה מספרים מופרדים בפסיק לחלוקת קופה.\n\n${names}`
+    );
+    if (answer == null) return;
+
+    const winners = answer
+      .split(/[,\s]+/)
+      .map((piece) => pool[Number(piece.trim()) - 1])
+      .filter(Boolean)
+      .map((p) => p.id);
+
+    if (winners.length === 0) {
+      alert('לא זוהה זוכה. הסיבוב נשאר פתוח.');
+      return;
+    }
+
+    const after = closeHand(state.game, winners);
+    for (const p of state.game.players) p.chipsWon = after[p.id];
+    state.game.hand = null;
+    actions['next-dealer']();
+    toast('הסיבוב נסגר');
+  },
+
+  /* ---- seating ---- */
+
+  'seat-up'(id) {
+    const players = state.game.players;
+    const i = players.findIndex((p) => p.id === id);
+    if (i <= 0) return;
+    [players[i - 1], players[i]] = [players[i], players[i - 1]];
+    commit();
+  },
+
+  'seat-down'(id) {
+    const players = state.game.players;
+    const i = players.findIndex((p) => p.id === id);
+    if (i === -1 || i === players.length - 1) return;
+    [players[i + 1], players[i]] = [players[i], players[i + 1]];
+    commit();
+  },
+
+  'set-dealer'(_, target) {
+    state.game.dealerIndex = Number(target.dataset.index) || 0;
+    commit();
+  },
+
+  'next-dealer'() {
+    const count = state.game.players.length;
+    if (count === 0) return;
+    state.game.dealerIndex = ((state.game.dealerIndex ?? 0) + 1) % count;
+    commit();
+  },
+
+  /* ---- filling the end-of-night count from the tracked stacks ---- */
+
+  'fill-from-tracking'() {
+    for (const p of state.game.players) p.cashOut = playerStackChips(p, state.game);
+    state.game.adjustment = null;
+    commit();
+    toast('הספירה מולאה לפי המעקב');
+  },
+
+  /* ---- sync ---- */
+
+  'host-game'() {
+    startSync(newGameCode());
+  },
+
+  'join-game'() {
+    const code = $('joinCodeInput').value.trim().toUpperCase();
+    if (!code) return;
+    startSync(code, { adopt: true });
+  },
+
+  'leave-sync'() {
+    sync.disconnect();
+    state.syncCode = null;
+    persist();
+    renderSync();
+    toast('הסנכרון נותק');
+  },
+
+  async 'copy-link'() {
+    const url = `${location.origin}${location.pathname}?game=${state.syncCode || ''}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('הקישור הועתק');
+    } catch {
+      window.prompt('קישור להצטרפות:', url);
+    }
+  },
+
   share: shareSummary,
   copy: copySummary,
   export: downloadExport,
@@ -742,6 +928,7 @@ const actions = {
 
 function commit() {
   persist();
+  scheduleBroadcast();
   render();
 }
 
@@ -758,7 +945,7 @@ document.addEventListener('click', (event) => {
   const handler = actions[action];
   if (!handler) return;
   event.preventDefault();
-  handler(target.dataset.id);
+  handler(target.dataset.id, target);
 });
 
 document.addEventListener('change', (event) => {
@@ -885,6 +1072,16 @@ function switchView(name) {
   window.scrollTo({ top: 0 });
 }
 
+$('themeToggle').addEventListener('click', () => {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  applyTheme(dark ? 'light' : 'dark');
+});
+
+$('syncToggle').addEventListener('click', () => {
+  const body = $('syncBody');
+  body.hidden = !body.hidden;
+});
+
 $('tabbar').addEventListener('click', (event) => {
   const tab = event.target.closest('.tab');
   if (tab) switchView(tab.dataset.view);
@@ -904,5 +1101,419 @@ if ('serviceWorker' in navigator) {
 
 /* ---- go ---- */
 
+
+
+/* ==========================================================================
+   The round: community cards, per-player bets, the pot, and the dealer button
+   ========================================================================== */
+
+const RANKS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2'];
+const SUITS = [
+  { id: 's', glyph: '♠', name: 'עלה' },
+  { id: 'h', glyph: '♥', name: 'לב אדום' },
+  { id: 'd', glyph: '♦', name: 'יהלום' },
+  { id: 'c', glyph: '♣', name: 'תלתן' },
+];
+
+const STREET_LABEL = {
+  preflop: 'פרה-פלופ',
+  flop: 'פלופ',
+  turn: 'טרן',
+  river: 'ריבר',
+};
+
+/** How many community cards belong on the felt at each street. */
+const STREET_CARDS = { preflop: 0, flop: 3, turn: 4, river: 5 };
+
+let cardPickerSlot = null;
+
+function currentHand() {
+  return state.game.hand || null;
+}
+
+function dealerName() {
+  const players = state.game.players;
+  if (players.length === 0) return null;
+  const index = ((state.game.dealerIndex ?? 0) % players.length + players.length) % players.length;
+  return players[index]?.name ?? null;
+}
+
+function renderRound() {
+  const root = $('roundContent');
+  root.textContent = '';
+
+  if (state.game.players.length === 0) {
+    root.append(emptyCard('i-cards', 'תוסיף שחקנים במסך "משחק" ואז אפשר לפתוח סיבוב.'));
+    return;
+  }
+  if (state.game.mode === 'cash') {
+    root.append(emptyCard('i-cards', 'מעקב סיבובים עובד בשיטת ז\'יטונים. אפשר לשנות בהגדרות המשחק.'));
+    return;
+  }
+
+  const hand = currentHand();
+  if (!hand) {
+    const start = el('div', 'panel empty');
+    start.append(el('p', null, 'אין סיבוב פתוח. פתח סיבוב כדי לעקוב אחרי ההימורים והקלפים.'));
+    const btn = el('button', 'btn btn-primary btn-lg', 'פתח סיבוב');
+    btn.type = 'button';
+    btn.dataset.action = 'start-hand';
+    start.append(btn);
+    root.append(start);
+    root.append(renderSeating());
+    return;
+  }
+
+  root.append(renderFelt(hand));
+  root.append(renderBets(hand));
+  root.append(renderSeating());
+}
+
+/** The felt: street, community cards and the pot, sized big for the TV. */
+function renderFelt(hand) {
+  const felt = el('div', 'panel felt');
+
+  const head = el('div', 'felt-head');
+  head.append(el('span', 'felt-street', `${STREET_LABEL[hand.street] || ''} · יד ${hand.n}`));
+  const dealer = dealerName();
+  if (dealer) head.append(el('span', 'felt-dealer', `דילר: ${dealer}`));
+  felt.append(head);
+
+  const board = el('div', 'board-cards');
+  const visible = STREET_CARDS[hand.street] ?? 0;
+  for (let i = 0; i < 5; i++) {
+    const card = hand.board[i];
+    const slot = el('button', `board-card${card ? ' filled' : ''}${i >= visible ? ' dim' : ''}`);
+    slot.type = 'button';
+    slot.dataset.action = 'pick-card';
+    slot.dataset.slot = String(i);
+    if (card) {
+      const suit = SUITS.find((x) => x.id === card.slice(-1));
+      slot.classList.add(suit && 'hd'.includes(suit.id) ? 'red' : 'black');
+      slot.append(el('span', 'card-rank', card.slice(0, -1)));
+      slot.append(el('span', 'card-suit', suit ? suit.glyph : ''));
+      slot.setAttribute('aria-label', `קלף ${i + 1}: ${card.slice(0, -1)} ${suit ? suit.name : ''}`);
+    } else {
+      slot.setAttribute('aria-label', `הוסף קלף ${i + 1}`);
+    }
+    board.append(slot);
+  }
+  felt.append(board);
+
+  if (cardPickerSlot !== null) felt.append(renderCardPicker());
+
+  const potBox = el('div', 'pot-box');
+  potBox.append(el('span', 'pot-box-label', 'קופת היד'));
+  potBox.append(el('strong', 'pot-box-value', String(handPot(hand))));
+  felt.append(potBox);
+
+  const streets = el('div', 'street-row');
+  for (const key of ['preflop', 'flop', 'turn', 'river']) {
+    const b = el('button', `street-btn${hand.street === key ? ' is-active' : ''}`, STREET_LABEL[key]);
+    b.type = 'button';
+    b.dataset.action = 'set-street';
+    b.dataset.street = key;
+    streets.append(b);
+  }
+  felt.append(streets);
+
+  return felt;
+}
+
+function renderCardPicker() {
+  const picker = el('div', 'card-picker');
+  const head = el('div', 'card-picker-head');
+  head.append(el('span', null, `קלף ${cardPickerSlot + 1}`));
+  const close = el('button', 'btn btn-ghost', 'סגור');
+  close.type = 'button';
+  close.dataset.action = 'close-picker';
+  head.append(close);
+  picker.append(head);
+
+  for (const suit of SUITS) {
+    const row = el('div', 'picker-row');
+    const label = el('span', `picker-suit ${'hd'.includes(suit.id) ? 'red' : 'black'}`, suit.glyph);
+    row.append(label);
+    for (const rank of RANKS) {
+      const b = el('button', `picker-card ${'hd'.includes(suit.id) ? 'red' : 'black'}`, rank);
+      b.type = 'button';
+      b.dataset.action = 'choose-card';
+      b.dataset.card = rank + suit.id;
+      b.setAttribute('aria-label', `${rank} ${suit.name}`);
+      row.append(b);
+    }
+    picker.append(row);
+  }
+
+  const clear = el('button', 'btn btn-ghost btn-block', 'נקה את הקלף');
+  clear.type = 'button';
+  clear.dataset.action = 'clear-card';
+  picker.append(clear);
+  return picker;
+}
+
+/** One row per player: what they are sitting behind and what they have bet. */
+function renderBets(hand) {
+  const wrap = el('div', 'players bets');
+
+  for (const player of state.game.players) {
+    const stack = playerStackChips(player, state.game);
+    const bet = Number(hand.bets?.[player.id]) || 0;
+    const row = el('div', `player bet-row${stack < 0 ? ' is-short' : ''}`);
+
+    const main = el('div', 'player-main');
+    const nameLine = el('div', 'player-name');
+    nameLine.append(document.createTextNode(player.name));
+    if (dealerName() === player.name) nameLine.append(el('span', 'dealer-badge', 'D'));
+    main.append(nameLine);
+    main.append(
+      el('div', 'player-meta', `נשאר ${stack} · הימר ${bet}`)
+    );
+
+    const quick = el('div', 'bet-quick');
+    for (const amount of [1, 5, 10, 25]) {
+      const b = el('button', null, `+${amount}`);
+      b.type = 'button';
+      b.dataset.action = 'bet-add';
+      b.dataset.id = player.id;
+      b.dataset.amount = String(amount);
+      quick.append(b);
+    }
+    const clear = el('button', 'bet-clear', '↺');
+    clear.type = 'button';
+    clear.dataset.action = 'bet-clear';
+    clear.dataset.id = player.id;
+    clear.setAttribute('aria-label', `אפס את ההימור של ${player.name}`);
+    quick.append(clear);
+
+    const field = el('div', 'count-input');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.inputMode = 'numeric';
+    input.min = '0';
+    input.value = bet ? String(bet) : '';
+    input.placeholder = '0';
+    input.dataset.action = 'bet-set';
+    input.dataset.id = player.id;
+    input.setAttribute('aria-label', `הימור של ${player.name}`);
+    field.append(input);
+
+    row.append(main, field, quick);
+    wrap.append(row);
+  }
+
+  const actions = el('div', 'panel actions-grid');
+  const win = el('button', 'btn btn-primary btn-block btn-lg', 'סגור סיבוב ובחר זוכה');
+  win.type = 'button';
+  win.dataset.action = 'close-hand';
+  actions.append(win);
+  const cancel = el('button', 'btn btn-ghost', 'בטל את הסיבוב');
+  cancel.type = 'button';
+  cancel.dataset.action = 'cancel-hand';
+  actions.append(cancel);
+  wrap.append(actions);
+
+  return wrap;
+}
+
+/** Seating order and the dealer button, both of which rotate during the night. */
+function renderSeating() {
+  const panel = el('div', 'panel seating');
+  panel.append(el('div', 'section-head', '').appendChild(el('h2', null, 'סידור ישיבה')).parentElement);
+
+  const list = el('div', 'seats');
+  state.game.players.forEach((player, index) => {
+    const seat = el('div', `seat${(state.game.dealerIndex ?? 0) === index ? ' is-dealer' : ''}`);
+    seat.append(el('span', 'seat-number', String(index + 1)));
+    seat.append(el('span', 'seat-name', player.name));
+
+    const controls = el('div', 'seat-controls');
+    const up = el('button', 'seat-btn', '▲');
+    up.type = 'button';
+    up.dataset.action = 'seat-up';
+    up.dataset.id = player.id;
+    up.disabled = index === 0;
+    up.setAttribute('aria-label', `הזז את ${player.name} קדימה`);
+
+    const down = el('button', 'seat-btn', '▼');
+    down.type = 'button';
+    down.dataset.action = 'seat-down';
+    down.dataset.id = player.id;
+    down.disabled = index === state.game.players.length - 1;
+    down.setAttribute('aria-label', `הזז את ${player.name} אחורה`);
+
+    const deal = el('button', 'seat-btn deal', 'D');
+    deal.type = 'button';
+    deal.dataset.action = 'set-dealer';
+    deal.dataset.index = String(index);
+    deal.setAttribute('aria-label', `הפוך את ${player.name} לדילר`);
+
+    controls.append(deal, up, down);
+    seat.append(controls);
+    list.append(seat);
+  });
+  panel.append(list);
+
+  const next = el('button', 'btn btn-ghost btn-block', 'העבר דילר לשחקן הבא');
+  next.type = 'button';
+  next.dataset.action = 'next-dealer';
+  panel.append(next);
+  return panel;
+}
+
+/* ==========================================================================
+   Theme
+   Light by default because a lit room needs a light page; the toggle is
+   remembered per device, so the TV can sit on dark while phones stay light.
+   ========================================================================== */
+
+const THEME_KEY = 'poker-manager:theme';
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Not being able to remember the choice is not worth failing over.
+  }
+  const btn = $('themeToggle');
+  if (btn) {
+    const dark = theme === 'dark';
+    btn.setAttribute('aria-label', dark ? 'עבור למצב בהיר' : 'עבור למצב כהה');
+    btn.textContent = dark ? '☀' : '☾';
+  }
+}
+
+function initTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    stored = null;
+  }
+  applyTheme(stored || 'light');
+}
+
+/* ==========================================================================
+   Sync
+   ========================================================================== */
+
+const sync = createSync({
+  onStatus: (status) => {
+    renderSync(status);
+    if (status === 'too-big') toast('המשחק גדול מדי לשידור');
+  },
+
+  onState: (packed, meta) => {
+    if (meta?.wantsResend) {
+      // Someone just joined with nothing; hand them what we have.
+      sync.broadcast(state.game, { force: true });
+      return;
+    }
+    if (!packed) return;
+    state.game = sync.merge(packed, state.game);
+    persist();
+    render();
+    toast('עודכן ממכשיר אחר');
+  },
+
+  onPeers: () => renderSync(),
+});
+
+function startSync(code, { adopt = false } = {}) {
+  state.syncCode = code;
+  persist();
+  sync.connect(code);
+  renderSync('connecting');
+
+  // A host publishes what it already has; a joiner waits to be caught up.
+  if (!adopt) setTimeout(() => sync.broadcast(state.game, { force: true }), 900);
+  toast(adopt ? `מצטרף למשחק ${code}` : `המשחק פתוח: ${code}`);
+}
+
+function renderSync(status) {
+  const statusEl = $('syncStatus');
+  const textEl = $('syncStatusText');
+  if (!statusEl || !textEl) return;
+
+  const current = status || sync.status;
+  statusEl.classList.toggle('is-live', current === 'live');
+  statusEl.classList.toggle('is-error', current === 'error');
+  statusEl.classList.toggle('is-connecting', current === 'connecting');
+
+  textEl.textContent =
+    current === 'live'
+      ? `מסונכרן · ${state.syncCode || ''}`
+      : current === 'connecting'
+        ? 'מתחבר...'
+        : current === 'error'
+          ? 'אין חיבור לסנכרון'
+          : 'לא מסונכרן';
+
+  const hosting = Boolean(state.syncCode);
+  $('codeDisplay').hidden = !hosting;
+  $('codeJoin').hidden = hosting;
+  if (hosting) $('codeValue').textContent = state.syncCode;
+}
+
+/** Push the game to peers after a local change, batching rapid taps. */
+let broadcastTimer = null;
+function scheduleBroadcast() {
+  if (!state.syncCode) return;
+  clearTimeout(broadcastTimer);
+  broadcastTimer = setTimeout(() => sync.broadcast(state.game), 350);
+}
+
+/* ---- bet entry, typed rather than tapped ---- */
+
+document.addEventListener('input', (event) => {
+  const target = event.target;
+  if (target.dataset?.action !== 'bet-set') return;
+  const hand = currentHand();
+  if (!hand) return;
+
+  const raw = target.value.trim();
+  const value = raw === '' ? 0 : Number(raw);
+  if (!Number.isFinite(value) || value < 0) return;
+
+  if (value === 0) delete hand.bets[target.dataset.id];
+  else hand.bets[target.dataset.id] = value;
+
+  persist();
+  scheduleBroadcast();
+  renderRoundLive();
+});
+
+/** Refresh the derived numbers on the round screen without rebuilding inputs. */
+function renderRoundLive() {
+  const hand = currentHand();
+  if (!hand) return;
+
+  const potEl = document.querySelector('.pot-box-value');
+  if (potEl) potEl.textContent = String(handPot(hand));
+
+  for (const player of state.game.players) {
+    const input = document.querySelector(`input[data-action="bet-set"][data-id="${player.id}"]`);
+    if (!input) continue;
+    const meta = input.closest('.player')?.querySelector('.player-meta');
+    if (meta) {
+      const bet = Number(hand.bets?.[player.id]) || 0;
+      meta.textContent = `נשאר ${playerStackChips(player, state.game)} · הימר ${bet}`;
+    }
+  }
+}
+
+/* ==========================================================================
+   Start
+   Last in the file: the bootstrap touches the sync session and the theme,
+   both of which are declared above, so it has to run after them.
+   ========================================================================== */
+
+initTheme();
 render();
 switchView(activeView);
+
+const urlCode = new URLSearchParams(location.search).get('game');
+if (urlCode) startSync(urlCode.toUpperCase(), { adopt: true });
+else if (state.syncCode) startSync(state.syncCode, { adopt: true });
+else renderSync();

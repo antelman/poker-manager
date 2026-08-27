@@ -1,31 +1,38 @@
-/* ==========================================================================
-   ערב פוקר
-   Two layouts from one document:
-     - phone: a single-column control surface with a bottom rail
-     - board (>=900px): every section on screen at once, sized to be read
-       from across the room when it is on a TV
-   ========================================================================== */
+@import url("https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Frank+Ruhl+Libre:wght@500;700;900&display=swap");
 
 :root {
-  /* Deep card-room felt, brass hardware, warm card-stock ivory. Green and red
-     are reserved for win/loss so the accent never competes with them. */
-  --felt-deep: #0b1712;
-  --felt: #12211a;
-  --felt-raised: #1a2e24;
-  --felt-sunken: #0e1c16;
-  --line: #23392c;
-  --line-soft: #1a2b21;
+  /* LIGHT (default): warm card stock and printed ink, with the felt kept for
+     the top rail so the page still reads as a card table. Brass is the accent;
+     green and red mean only win and loss. */
+  --bg: #f3f0e6;
+  --surface: #fffdf7;
+  --surface-raised: #f7f3e7;
+  --surface-sunken: #efeade;
+  --line: #ddd5c0;
+  --line-soft: #e9e3d3;
 
-  --brass: #d9a94c;
-  --brass-deep: #9c7228;
-  --brass-glow: rgba(217, 169, 76, .14);
+  --brass: #a97722;
+  --brass-strong: #8a6018;
+  --brass-deep: #c9a761;
+  --brass-glow: rgba(169, 119, 34, .16);
+  --on-brass: #fffdf7;
 
-  --ivory: #f2eee3;
-  --ivory-dim: #93a496;
-  --ivory-faint: #64786a;
+  --text: #16241c;
+  --text-dim: #55665a;
+  --text-faint: #85947f;
 
-  --win: #5cc98e;
-  --lose: #e2585b;
+  --win: #17845a;
+  --lose: #bf3639;
+
+  /* The rail stays felt-dark in both themes - it is the table edge. */
+  --bar-bg: #0e1c15;
+  --bar-text: #f2eee3;
+  --bar-faint: #8fa494;
+  --bar-line: #24382c;
+  --bar-accent: #e0b45f;
+
+  --shadow-sm: 0 1px 2px rgba(28, 38, 30, .06);
+  --shadow-md: 0 4px 14px rgba(28, 38, 30, .09);
 
   --serif: "Frank Ruhl Libre", Georgia, "Times New Roman", serif;
   --sans: "Assistant", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
@@ -39,23 +46,87 @@
   --gap: 11px;
 }
 
+/* DARK: the same room with the lights down. Surfaces are separated further
+   than the first pass so panels read as objects rather than one dark wash. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a1410;
+    --surface: #16261e;
+    --surface-raised: #1f3529;
+    --surface-sunken: #101f18;
+    --line: #2c4636;
+    --line-soft: #223529;
+
+    --brass: #e2b662;
+    --brass-strong: #f0cb85;
+    --brass-deep: #a87c2e;
+    --brass-glow: rgba(226, 182, 98, .16);
+    --on-brass: #17130a;
+
+    --text: #f4f1e8;
+    --text-dim: #aabdae;
+    --text-faint: #7b8f80;
+
+    --win: #56d195;
+    --lose: #f0777a;
+
+    --bar-bg: #0a1410;
+    --bar-text: #f4f1e8;
+    --bar-faint: #7b8f80;
+    --bar-line: #2c4636;
+    --bar-accent: #e2b662;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, .45);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0a1410;
+  --surface: #16261e;
+  --surface-raised: #1f3529;
+  --surface-sunken: #101f18;
+  --line: #2c4636;
+  --line-soft: #223529;
+
+  --brass: #e2b662;
+  --brass-strong: #f0cb85;
+  --brass-deep: #a87c2e;
+  --brass-glow: rgba(226, 182, 98, .16);
+  --on-brass: #17130a;
+
+  --text: #f4f1e8;
+  --text-dim: #aabdae;
+  --text-faint: #7b8f80;
+
+  --win: #56d195;
+  --lose: #f0777a;
+
+  --bar-bg: #0a1410;
+  --bar-text: #f4f1e8;
+  --bar-faint: #7b8f80;
+  --bar-line: #2c4636;
+  --bar-accent: #e2b662;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, .45);
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html {
-  background: var(--felt-deep);
+  background: var(--bg);
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--felt-deep);
+  background: var(--bg);
   /* A slow felt wash, plus the suggestion of light over the middle of a table. */
-  background-image:
-    radial-gradient(140% 70% at 50% -12%, rgba(217, 169, 76, .09), transparent 62%),
-    radial-gradient(120% 90% at 50% 105%, rgba(92, 201, 142, .05), transparent 65%);
+  background-image: radial-gradient(120% 60% at 50% 0%, var(--brass-glow), transparent 60%);
   background-repeat: no-repeat;
   background-attachment: fixed;
-  color: var(--ivory);
+  color: var(--text);
   font-family: var(--sans);
   font-size: 16px;
   line-height: 1.5;
@@ -90,9 +161,9 @@ svg[class*="icon"] {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(11, 23, 18, .92);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--line);
+  background: var(--bar-bg);
+  color: var(--bar-text);
+  border-bottom: 1px solid var(--bar-line);
   padding-top: env(safe-area-inset-top);
 }
 
@@ -122,9 +193,9 @@ svg[class*="icon"] {
   border-radius: 50%;
   flex: none;
   background:
-    repeating-conic-gradient(var(--brass) 0deg 18deg, transparent 18deg 45deg),
-    radial-gradient(circle, var(--felt-deep) 0 38%, var(--brass-deep) 39% 62%, var(--felt) 63%);
-  box-shadow: 0 0 0 1.5px var(--brass-deep), 0 0 14px var(--brass-glow);
+    repeating-conic-gradient(var(--bar-accent) 0deg 18deg, transparent 18deg 45deg),
+    radial-gradient(circle, var(--bar-bg) 0 38%, #a87c2e 39% 62%, #16261e 63%);
+  box-shadow: 0 0 0 1.5px #a87c2e;
 }
 
 .pot { text-align: left; line-height: 1.1; }
@@ -134,14 +205,14 @@ svg[class*="icon"] {
   font-size: .64rem;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: var(--ivory-faint);
+  color: var(--bar-faint);
 }
 
 .pot-value {
   font-family: var(--serif);
   font-weight: 700;
   font-size: 1.32rem;
-  color: var(--brass);
+  color: var(--bar-accent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -160,13 +231,14 @@ svg[class*="icon"] {
 .board-heading { display: none; }
 
 .panel {
-  background: var(--felt);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: var(--pad);
+  box-shadow: var(--shadow-sm);
 }
 
-.hint { margin: 0; font-size: .84rem; color: var(--ivory-dim); }
+.hint { margin: 0; font-size: .84rem; color: var(--text-dim); }
 
 /* -------------------------------------------------------------- settings */
 
@@ -189,8 +261,8 @@ svg[class*="icon"] {
   content: "";
   width: 8px;
   height: 8px;
-  border-right: 1.6px solid var(--ivory-faint);
-  border-bottom: 1.6px solid var(--ivory-faint);
+  border-right: 1.6px solid var(--text-faint);
+  border-bottom: 1.6px solid var(--text-faint);
   transform: rotate(45deg) translate(-2px, -2px);
   transition: transform .2s;
   flex: none;
@@ -199,7 +271,7 @@ svg[class*="icon"] {
 .settings[open] .settings-summary::after { transform: rotate(-135deg) translate(-3px, -3px); }
 
 .settings-preview {
-  color: var(--ivory-dim);
+  color: var(--text-dim);
   font-size: .82rem;
   font-weight: 400;
   margin-inline-start: auto;
@@ -221,12 +293,12 @@ svg[class*="icon"] {
   font-size: .7rem;
   letter-spacing: .09em;
   text-transform: uppercase;
-  color: var(--ivory-faint);
+  color: var(--text-faint);
 }
 
 input[type="text"], input[type="number"], select {
   width: 100%;
-  background: var(--felt-sunken);
+  background: var(--surface-sunken);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: 11px 13px;
@@ -241,7 +313,7 @@ input:focus, select:focus {
 }
 
 input[type="number"] { font-variant-numeric: tabular-nums; }
-input::placeholder { color: var(--ivory-faint); }
+input::placeholder { color: var(--text-faint); }
 
 /* The +/- buttons drive these, so the native spinners are just noise. */
 input[type="number"]::-webkit-outer-spin-button,
@@ -257,20 +329,22 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   min-height: 46px;
   font-weight: 600;
   cursor: pointer;
-  background: var(--felt-raised);
-  color: var(--ivory);
+  background: var(--surface-raised);
+  color: var(--text);
   transition: transform .08s, background .15s, border-color .15s;
 }
 
 .btn:active { transform: scale(.975); }
 
+/* Brass fill in both themes; the label flips so it stays legible on it. */
 .btn-primary {
-  background: linear-gradient(180deg, var(--brass) 0%, #c2933c 100%);
-  color: #241703;
-  border-color: var(--brass-deep);
+  background: var(--brass);
+  color: var(--on-brass);
+  border-color: var(--brass-strong);
+  box-shadow: var(--shadow-sm);
 }
 
-.btn-ghost { background: transparent; color: var(--ivory-dim); }
+.btn-ghost { background: transparent; color: var(--text-dim); }
 .btn-block { width: 100%; }
 .btn-lg { min-height: 54px; font-size: 1.02rem; }
 
@@ -286,7 +360,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   gap: 9px;
   margin-top: 11px;
   font-size: .83rem;
-  color: var(--ivory-dim);
+  color: var(--text-dim);
   cursor: pointer;
 }
 
@@ -299,7 +373,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* The brass edge reads as the chip rail along the side of the table. */
 .player {
   position: relative;
-  background: var(--felt);
+  box-shadow: var(--shadow-sm);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: 12px var(--pad);
@@ -332,7 +407,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .player-meta {
   font-size: .78rem;
-  color: var(--ivory-dim);
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   margin-top: 1px;
 }
@@ -344,8 +419,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   height: 42px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: var(--felt-raised);
-  color: var(--ivory);
+  background: var(--surface-raised);
+  color: var(--text);
   font-size: 1.35rem;
   line-height: 1;
   font-weight: 600;
@@ -359,8 +434,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .step-btn.plus {
   background: var(--brass);
-  border-color: var(--brass-deep);
-  color: #241703;
+  border-color: var(--brass-strong);
+  color: var(--on-brass);
 }
 
 .step-btn:disabled { opacity: .3; cursor: default; }
@@ -377,7 +452,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .player-remove {
   background: none;
   border: none;
-  color: var(--ivory-faint);
+  color: var(--text-faint);
   font-size: 1.05rem;
   padding: 9px;
   cursor: pointer;
@@ -401,7 +476,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .count-value {
   font-size: .79rem;
-  color: var(--ivory-dim);
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   margin-top: 2px;
 }
@@ -435,7 +510,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-variant-numeric: tabular-nums;
 }
 
-.total-line span { color: var(--ivory-dim); font-size: .88rem; }
+.total-line span { color: var(--text-dim); font-size: .88rem; }
 .total-line strong { font-size: 1rem; font-variant-numeric: tabular-nums; }
 
 .total-line.big strong {
@@ -481,7 +556,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-size: .72rem;
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--ivory-faint);
+  color: var(--text-faint);
 }
 
 .list-card { padding: 0; overflow: hidden; }
@@ -501,7 +576,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   flex: none;
   font-family: var(--serif);
   font-size: .9rem;
-  color: var(--ivory-faint);
+  color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
 
@@ -520,7 +595,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-family: var(--sans);
   font-weight: 400;
   font-size: .75rem;
-  color: var(--ivory-faint);
+  color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
 
@@ -534,7 +609,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .net-win { color: var(--win); }
 .net-lose { color: var(--lose); }
-.net-even { color: var(--ivory-faint); }
+.net-even { color: var(--text-faint); }
 
 /* --------------------------------------------------------------- payments */
 
@@ -543,7 +618,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   align-items: center;
   gap: 12px;
   padding: 14px var(--pad);
-  background: var(--felt);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
 }
@@ -559,7 +634,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .transfer-names strong { font-weight: 700; }
-.transfer-arrow { color: var(--ivory-dim); font-family: var(--sans); font-size: .86rem; }
+.transfer-arrow { color: var(--text-dim); font-family: var(--sans); font-size: .86rem; }
 
 .transfer-amount {
   flex: none;
@@ -580,27 +655,27 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .history-item { display: flex; flex-direction: column; gap: 9px; }
 .history-head { display: flex; justify-content: space-between; align-items: baseline; gap: 9px; }
 .history-date { font-family: var(--serif); font-weight: 700; font-size: .95rem; }
-.history-meta { font-size: .77rem; color: var(--ivory-dim); font-variant-numeric: tabular-nums; }
+.history-meta { font-size: .77rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .history-players { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .history-chip {
   font-size: .78rem;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--felt-sunken);
+  background: var(--surface-sunken);
   border: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
 }
 
 /* ----------------------------------------------------------- empty states */
 
-.empty { text-align: center; padding: 30px 18px; color: var(--ivory-dim); }
+.empty { text-align: center; padding: 30px 18px; color: var(--text-dim); }
 
 .empty svg {
   width: 30px;
   height: 30px;
   margin-bottom: 10px;
-  color: var(--ivory-faint);
+  color: var(--text-faint);
   opacity: .8;
 }
 
@@ -614,9 +689,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   bottom: 0;
   z-index: 30;
   display: flex;
-  background: rgba(14, 28, 22, .96);
-  backdrop-filter: blur(14px);
-  border-top: 1px solid var(--line);
+  background: var(--bar-bg);
+  border-top: 1px solid var(--bar-line);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -624,7 +698,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   flex: 1;
   background: none;
   border: none;
-  color: var(--ivory-faint);
+  color: var(--bar-faint);
   height: var(--rail-h);
   display: flex;
   flex-direction: column;
@@ -639,7 +713,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .tab-icon { width: 21px; height: 21px; }
 .tab-text { font-size: .69rem; font-weight: 600; }
-.tab.is-active { color: var(--brass); }
+.tab.is-active { color: var(--bar-accent); }
 
 /* A brass marker on the active tab, matching the rail on the player rows. */
 .tab.is-active::before {
@@ -648,7 +722,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   top: 0;
   width: 26px;
   height: 2px;
-  background: var(--brass);
+  background: var(--bar-accent);
   border-radius: 0 0 2px 2px;
 }
 
@@ -661,9 +735,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   margin: 0 auto;
   width: fit-content;
   max-width: 90%;
-  background: var(--felt-raised);
+  background: var(--surface-raised);
   border: 1px solid var(--brass-deep);
-  color: var(--ivory);
+  color: var(--text);
   padding: 11px 19px;
   border-radius: 999px;
   font-size: .87rem;
@@ -787,4 +861,302 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
     animation-duration: .01ms !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ==========================================================================
+   The round: felt, community cards, bets, seating
+   ========================================================================== */
+
+.felt {
+  background: linear-gradient(170deg, var(--surface) 0%, var(--surface-raised) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.felt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+
+.felt-street {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--brass);
+}
+
+.felt-dealer { font-size: .8rem; color: var(--text-dim); }
+
+/* Community cards read as actual playing cards, white in both themes. */
+.board-cards { display: flex; gap: 8px; justify-content: center; }
+
+.board-card {
+  flex: 1;
+  max-width: 76px;
+  aspect-ratio: 5 / 7;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-sunken);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  transition: transform .1s, box-shadow .15s;
+}
+
+.board-card:active { transform: scale(.96); }
+.board-card.dim { opacity: .4; }
+
+.board-card.filled {
+  background: #fffdf7;
+  border-color: #cfc7b4;
+  box-shadow: var(--shadow-md);
+  opacity: 1;
+}
+
+.board-card.filled.red { color: #c8262b; }
+.board-card.filled.black { color: #16241c; }
+
+.card-rank { font-family: var(--serif); font-weight: 900; font-size: clamp(1.2rem, 4vw, 1.8rem); line-height: 1; }
+.card-suit { font-size: clamp(1rem, 3.4vw, 1.5rem); line-height: 1; }
+
+.pot-box {
+  text-align: center;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+
+.pot-box-label {
+  display: block;
+  font-size: .68rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.pot-box-value {
+  font-family: var(--serif);
+  font-size: clamp(1.7rem, 6vw, 2.4rem);
+  font-weight: 900;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.street-row { display: flex; gap: 6px; }
+
+.street-btn {
+  flex: 1;
+  padding: 9px 4px;
+  min-height: 42px;
+  font-size: .8rem;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.street-btn.is-active {
+  background: var(--brass);
+  border-color: var(--brass-strong);
+  color: var(--on-brass);
+}
+
+/* ---- card picker ---- */
+
+.card-picker {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.card-picker-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.picker-row { display: flex; gap: 4px; align-items: center; }
+.picker-suit { width: 20px; text-align: center; font-size: 1.1rem; flex: none; }
+.picker-suit.red, .picker-card.red { color: var(--lose); }
+.picker-suit.black, .picker-card.black { color: var(--text); }
+
+.picker-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 4px 2px;
+  font-size: .82rem;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.picker-card:active { transform: scale(.94); }
+
+/* ---- bets ---- */
+
+.bet-row { flex-wrap: wrap; }
+.bet-row.is-short { border-color: var(--lose); }
+
+.bet-quick { display: flex; gap: 6px; width: 100%; margin-top: 9px; }
+
+.bet-quick button {
+  flex: 1;
+  min-height: 40px;
+  font-size: .82rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--brass);
+  cursor: pointer;
+}
+
+.bet-quick .bet-clear { flex: 0 0 44px; color: var(--text-dim); }
+.bet-quick button:active { transform: scale(.96); }
+
+.dealer-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--brass);
+  color: var(--on-brass);
+  font-family: var(--sans);
+  font-size: .68rem;
+  font-weight: 700;
+  margin-inline-start: 7px;
+  vertical-align: middle;
+}
+
+/* ---- seating ---- */
+
+.seating { display: flex; flex-direction: column; gap: 10px; }
+.seats { display: flex; flex-direction: column; gap: 7px; }
+
+.seat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+}
+
+.seat.is-dealer { border-color: var(--brass); }
+
+.seat-number {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.seat-name { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-controls { display: flex; gap: 5px; flex: none; }
+
+.seat-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: .78rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.seat-btn.deal { font-weight: 700; }
+.seat.is-dealer .seat-btn.deal { background: var(--brass); color: var(--on-brass); border-color: var(--brass-strong); }
+.seat-btn:disabled { opacity: .3; cursor: default; }
+
+/* ---- sync ---- */
+
+.sync-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sync-status { display: flex; align-items: center; gap: 7px; font-size: .84rem; color: var(--text-dim); }
+
+.sync-status .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+
+.sync-status.is-live .dot { background: var(--win); box-shadow: 0 0 0 3px rgba(23, 132, 90, .2); }
+.sync-status.is-error .dot { background: var(--lose); }
+.sync-status.is-connecting .dot { background: var(--brass); }
+.sync-toggle { min-height: 38px; padding: 6px 12px; font-size: .82rem; }
+.sync-body { display: flex; flex-direction: column; gap: 11px; margin-top: 12px; }
+.code-display { display: flex; flex-direction: column; gap: 6px; }
+
+.code-value {
+  font-family: var(--serif);
+  font-size: 1.9rem;
+  font-weight: 900;
+  letter-spacing: .18em;
+  color: var(--brass);
+}
+
+.join-row { display: flex; gap: 8px; margin-top: 9px; }
+.join-row input { flex: 1; text-transform: uppercase; letter-spacing: .12em; }
+
+/* ---- theme toggle ---- */
+
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--bar-line);
+  color: var(--bar-faint);
+  border-radius: 999px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+
+.theme-toggle svg { width: 18px; height: 18px; }
+
+/* ---- board layout additions ---- */
+
+@media (min-width: 900px) {
+  #main {
+    grid-template-columns: minmax(320px, .9fr) minmax(0, 1.3fr) minmax(0, 1.2fr);
+    grid-template-areas:
+      "game  round settle"
+      "count round settle"
+      "history round settle";
+  }
+
+  .view-round { grid-area: round; }
+
+  .view-round .board-card { max-width: 120px; }
+  .view-round .card-rank { font-size: clamp(1.6rem, 2.4vw, 3rem); }
+  .view-round .card-suit { font-size: clamp(1.3rem, 2vw, 2.4rem); }
+  .view-round .pot-box-value { font-size: clamp(2.2rem, 3.6vw, 4.2rem); }
+  .view-round .felt-street { font-size: clamp(1.1rem, 1.4vw, 1.8rem); }
+  .view-round .player-name { font-size: clamp(1.05rem, 1.2vw, 1.5rem); }
+}
+
+@media (max-width: 899px) {
+  #main { display: block; }
+  #main > .view { display: none; }
+  #main > .view:not([hidden]) { display: flex; }
 }
