@@ -1049,11 +1049,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .bet-row { flex-wrap: wrap; }
 .bet-row.is-short { border-color: var(--lose); }
 
-.bet-quick { display: flex; gap: 6px; width: 100%; margin-top: 9px; }
+.bet-quick { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 9px; }
 
 .bet-quick button {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 54px;
   min-height: 40px;
+  padding: 4px 6px;
   font-size: .82rem;
   font-weight: 600;
   border-radius: 999px;
@@ -1264,3 +1266,51 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .winner-bet { font-size: .74rem; opacity: .8; font-variant-numeric: tabular-nums; }
 .winner-option:active { transform: scale(.97); }
 .btn:disabled { opacity: .45; cursor: default; }
+
+/* ---- side pots ---- */
+
+.pot-breakdown {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: start;
+}
+
+.pot-slice {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pot-slice-name { font-size: .78rem; font-weight: 600; color: var(--text-dim); }
+
+.pot-slice-amount {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.pot-slice-who {
+  font-size: .72rem;
+  color: var(--text-faint);
+  text-align: end;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.winner-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+
+.winner-amount {
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}

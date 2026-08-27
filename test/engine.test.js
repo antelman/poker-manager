@@ -279,10 +279,17 @@ test('closeHand splits a pot and gives the odd chip to the first winner', () => 
   assert.equal(after.c, -25);
 });
 
-test('closeHand with no winner just returns the bets as losses', () => {
-  const players = [{ id: 'a', name: 'A', buyIns: [5000], chipsWon: 5 }];
-  const g = handGame(players, { bets: { a: 20 } });
-  assert.equal(closeHand(g, []).a, -15);
+test('closeHand with no winner refunds rather than destroying chips', () => {
+  const players = [
+    { id: 'a', name: 'A', buyIns: [5000], chipsWon: 5 },
+    { id: 'b', name: 'B', buyIns: [5000], chipsWon: 0 },
+  ];
+  const g = handGame(players, { bets: { a: 20, b: 20 } });
+  const after = closeHand(g, []);
+
+  // Nobody was named, so the 40 goes back where it came from.
+  assert.equal(after.a, 5);
+  assert.equal(after.b, 0);
 });
 
 test('chips are conserved across a run of hands', () => {
@@ -373,4 +380,120 @@ test('folded players still lose what they already put in', () => {
   assert.equal(after.b, -5);
   assert.equal(after.a, 5);
   assert.equal(after.a + after.b, 0);
+});
+
+/* ------------------------------------------------------------- side pots */
+
+import { sidePots, closeHandWithPots } from '../src/engine.js';
+
+const chipPlayers = (ids) => ids.map((id) => ({ id, name: id, buyIns: [5000], chipsWon: 0 }));
+
+test('one pot when everyone put in the same', () => {
+  const g = handGame(chipPlayers(['a', 'b', 'c']), { bets: { a: 25, b: 25, c: 25 } });
+  const pots = sidePots(g);
+  assert.equal(pots.length, 1);
+  assert.equal(pots[0].amount, 75);
+  assert.deepEqual(pots[0].eligibleIds, ['a', 'b', 'c']);
+  assert.equal(pots[0].isMain, true);
+});
+
+test('a short all-in creates a side pot only the others can win', () => {
+  // A is all-in for 50; B and C keep betting to 200.
+  const g = handGame(chipPlayers(['a', 'b', 'c']), { bets: { a: 50, b: 200, c: 200 } });
+  const pots = sidePots(g);
+
+  assert.equal(pots.length, 2);
+  assert.equal(pots[0].amount, 150); // 50 from each of the three
+  assert.deepEqual(pots[0].eligibleIds, ['a', 'b', 'c']);
+  assert.equal(pots[1].amount, 300); // 150 more from each of B and C
+  assert.deepEqual(pots[1].eligibleIds, ['b', 'c']);
+  assert.equal(pots[0].amount + pots[1].amount, 450);
+});
+
+test('the short stack winning the main pot cannot touch the side pot', () => {
+  const players = chipPlayers(['a', 'b', 'c']);
+  const g = handGame(players, { bets: { a: 50, b: 200, c: 200 } });
+
+  const after = closeHandWithPots(g, [['a'], ['b']]);
+  assert.equal(after.a, 100); // won 150, paid 50
+  assert.equal(after.b, 100); // won 300, paid 200
+  assert.equal(after.c, -200);
+  assert.equal(after.a + after.b + after.c, 0);
+});
+
+test('three all-ins at different sizes build two side pots', () => {
+  const g = handGame(chipPlayers(['a', 'b', 'c', 'd']), {
+    bets: { a: 20, b: 60, c: 150, d: 150 },
+  });
+  const pots = sidePots(g);
+
+  assert.equal(pots.length, 3);
+  assert.deepEqual(pots.map((p) => p.amount), [80, 120, 180]);
+  assert.deepEqual(pots.map((p) => p.eligibleIds), [
+    ['a', 'b', 'c', 'd'],
+    ['b', 'c', 'd'],
+    ['c', 'd'],
+  ]);
+  assert.equal(pots.reduce((s, p) => s + p.amount, 0), 380);
+});
+
+test('folded players fund the pot but cannot win it', () => {
+  const g = handGame(chipPlayers(['a', 'b', 'c']), {
+    bets: { a: 100, b: 100, c: 40 },
+    folded: { c: true },
+  });
+  const pots = sidePots(g);
+
+  // C folding is the only reason the layers split, and both layers are
+  // winnable by exactly A and B - so there is no real side pot, just one pot
+  // of 240 that includes C's dead 40.
+  assert.equal(pots.length, 1);
+  assert.equal(pots[0].amount, 240);
+  assert.deepEqual(pots[0].eligibleIds, ['a', 'b']);
+
+  const after = closeHandWithPots(g, [['a']]);
+  assert.equal(after.a, 140);
+  assert.equal(after.c, -40);
+  assert.equal(after.a + after.b + after.c, 0);
+});
+
+test('a split side pot conserves chips including the odd one', () => {
+  const g = handGame(chipPlayers(['a', 'b', 'c']), { bets: { a: 33, b: 100, c: 100 } });
+  const after = closeHandWithPots(g, [['a'], ['b', 'c']]);
+  assert.equal(after.a + after.b + after.c, 0);
+});
+
+test('an unclaimed pot is refunded rather than lost', () => {
+  const g = handGame(chipPlayers(['a', 'b', 'c']), { bets: { a: 50, b: 200, c: 200 } });
+  // Only the short stack is named, so nobody eligible claims the side pot.
+  const after = closeHandWithPots(g, [['a'], []]);
+  assert.equal(after.a + after.b + after.c, 0);
+  assert.equal(after.b, -50); // 200 in, 150 side pot back
+  assert.equal(after.c, -50);
+});
+
+test('chips are conserved across many random all-in shapes', () => {
+  let seed = 7;
+  const rand = (n) => ((seed = (seed * 1103515245 + 12345) % 2147483648) % n);
+
+  for (let round = 0; round < 200; round++) {
+    const ids = ['a', 'b', 'c', 'd', 'e'].slice(0, 2 + rand(4));
+    const players = chipPlayers(ids);
+    const bets = {};
+    const folded = {};
+    for (const id of ids) {
+      bets[id] = rand(200);
+      if (rand(4) === 0) folded[id] = true;
+    }
+    const g = handGame(players, { bets, folded });
+    const pots = sidePots(g);
+
+    // Every chip bet ends up in exactly one pot.
+    const potTotal = pots.reduce((s, p) => s + p.amount, 0);
+    assert.equal(potTotal, Object.values(bets).reduce((s, n) => s + n, 0));
+
+    const winners = pots.map((p) => (p.eligibleIds.length ? [p.eligibleIds[rand(p.eligibleIds.length)]] : []));
+    const after = closeHandWithPots(g, winners);
+    assert.equal(Object.values(after).reduce((s, n) => s + n, 0), 0);
+  }
 });

@@ -227,24 +227,10 @@ export function playerStackChips(player, game) {
  * Returns the updated `chipsWon` per player; the caller writes them back.
  */
 export function closeHand(game, winnerIds) {
-  const hand = game.hand;
-  const result = {};
-  for (const p of game.players) result[p.id] = Number(p.chipsWon) || 0;
-  if (!hand) return result;
-
-  for (const p of game.players) {
-    result[p.id] -= Number(hand.bets?.[p.id]) || 0;
-  }
-
-  const winners = (winnerIds || []).filter((id) => result[id] !== undefined);
-  const pot = handPot(hand);
-  if (winners.length === 0 || pot === 0) return result;
-
-  const share = Math.floor(pot / winners.length);
-  for (const id of winners) result[id] += share;
-  result[winners[0]] += pot - share * winners.length;
-
-  return result;
+  // Kept as the simple entry point: award every pot to the same winners,
+  // filtered per pot by who is actually eligible for it.
+  const pots = sidePots(game);
+  return closeHandWithPots(game, pots.map(() => winnerIds || []));
 }
 
 /* --------------------------------------------------------- betting helpers */
@@ -295,4 +281,106 @@ export function blindBets(game) {
   if (small > 0) bets[players[smallSeat].id] = small;
   if (big > 0) bets[players[bigSeat].id] = big;
   return bets;
+}
+
+/* ------------------------------------------------------------- side pots */
+
+/**
+ * Split the hand into a main pot and however many side pots the betting
+ * created.
+ *
+ * When someone is all-in for less than the others, they can only win the part
+ * of the pot they actually covered. The pot is therefore sliced into layers:
+ * every distinct contribution level is a layer, funded by everyone who put in
+ * at least that much, and winnable only by those of them still in the hand.
+ * Folded players still fund the layers they paid into - their chips stay in
+ * the middle - they just cannot win any of it.
+ *
+ * Returns pots from the main pot outwards, each with the ids allowed to win
+ * it. Layers with the same eligible players are merged so the table sees one
+ * pot per meaningfully different set, not one per betting level.
+ */
+export function sidePots(game) {
+  const hand = game.hand;
+  if (!hand) return [];
+
+  const folded = hand.folded || {};
+  const contributions = new Map();
+  for (const player of game.players) {
+    const amount = Number(hand.bets?.[player.id]) || 0;
+    if (amount > 0) contributions.set(player.id, amount);
+  }
+  if (contributions.size === 0) return [];
+
+  const levels = [...new Set(contributions.values())].sort((a, b) => a - b);
+  const pots = [];
+  let previous = 0;
+
+  for (const level of levels) {
+    const step = level - previous;
+    previous = level;
+    if (step <= 0) continue;
+
+    const contributors = [...contributions.entries()]
+      .filter(([, amount]) => amount >= level)
+      .map(([id]) => id);
+
+    const amount = step * contributors.length;
+    if (amount === 0) continue;
+
+    const eligibleIds = contributors.filter((id) => !folded[id]);
+    const key = eligibleIds.join(',');
+    const last = pots[pots.length - 1];
+
+    if (last && last.key === key) last.amount += amount;
+    else pots.push({ amount, eligibleIds, contributorIds: contributors, key });
+  }
+
+  return pots.map(({ amount, eligibleIds, contributorIds }, index) => ({
+    amount,
+    eligibleIds,
+    contributorIds,
+    isMain: index === 0,
+  }));
+}
+
+/**
+ * Close the hand, awarding each pot to the winners chosen for it.
+ *
+ * `winnersByPot` is aligned with `sidePots(game)`. A pot whose chosen winners
+ * are all ineligible (or unset) is refunded to the players who funded it,
+ * rather than being quietly dropped - chips are always conserved.
+ */
+export function closeHandWithPots(game, winnersByPot) {
+  const result = {};
+  for (const p of game.players) result[p.id] = Number(p.chipsWon) || 0;
+
+  const hand = game.hand;
+  if (!hand) return result;
+
+  for (const p of game.players) {
+    result[p.id] -= Number(hand.bets?.[p.id]) || 0;
+  }
+
+  const pots = sidePots(game);
+  pots.forEach((pot, index) => {
+    const chosen = (winnersByPot?.[index] || []).filter((id) =>
+      pot.eligibleIds.includes(id)
+    );
+
+    if (chosen.length === 0) {
+      // Nobody eligible was picked: hand this layer back to who paid into it.
+      const refund = Math.floor(pot.amount / pot.contributorIds.length);
+      for (const id of pot.contributorIds) result[id] += refund;
+      const remainder = pot.amount - refund * pot.contributorIds.length;
+      if (remainder > 0) result[pot.contributorIds[0]] += remainder;
+      return;
+    }
+
+    const share = Math.floor(pot.amount / chosen.length);
+    for (const id of chosen) result[id] += share;
+    result[chosen[0]] += pot.amount - share * chosen.length;
+  });
+
+  return result;
 }

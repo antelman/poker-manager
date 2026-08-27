@@ -8,12 +8,13 @@ import {
   newHand,
   handPot,
   playerStackChips,
-  closeHand,
   buyInChips,
   currentBet,
   callAmount,
   blindBets,
   activePlayers,
+  sidePots,
+  closeHandWithPots,
   STREETS,
 } from './src/engine.js';
 
@@ -781,10 +782,13 @@ const actions = {
     commit();
   },
 
-  'toggle-winner'(id) {
+  'toggle-winner'(id, target) {
     if (!winnerPick) return;
-    if (winnerPick.has(id)) winnerPick.delete(id);
-    else winnerPick.add(id);
+    const index = Number(target.dataset.pot) || 0;
+    const chosen = winnerPick[index];
+    if (!chosen) return;
+    if (chosen.has(id)) chosen.delete(id);
+    else chosen.add(id);
     commit();
   },
 
@@ -795,8 +799,8 @@ const actions = {
 
   'confirm-winner'() {
     const hand = state.game.hand;
-    if (!hand || !winnerPick || winnerPick.size === 0) return;
-    const after = closeHand(state.game, [...winnerPick]);
+    if (!hand || !winnerPick) return;
+    const after = closeHandWithPots(state.game, winnerPick.map((set) => [...set]));
     for (const p of state.game.players) p.chipsWon = after[p.id];
     state.game.hand = null;
     winnerPick = null;
@@ -865,7 +869,11 @@ const actions = {
       alert('אין כלום בקופה. תזין הימורים או תבטל את הסיבוב.');
       return;
     }
-    winnerPick = new Set();
+    // A pot only one player is eligible for has no decision in it, so it is
+    // filled in already and the table only answers the real questions.
+    winnerPick = sidePots(state.game).map((pot) =>
+      pot.eligibleIds.length === 1 ? new Set(pot.eligibleIds) : new Set()
+    );
     commit();
   },
 
@@ -1182,7 +1190,7 @@ const STREET_CARDS = { preflop: 0, flop: 3, turn: 4, river: 5 };
 let cardPickerSlot = null;
 let pickerRank = null;
 let pickerSuit = null;
-let winnerPick = null; // Set of player ids while choosing who took the pot
+let winnerPick = null; // one Set of player ids per pot, while choosing winners
 
 function closePicker() {
   cardPickerSlot = null;
@@ -1302,6 +1310,30 @@ function renderFelt(hand) {
   const potBox = el('div', 'pot-box');
   potBox.append(el('span', 'pot-box-label', 'קופת היד'));
   potBox.append(el('strong', 'pot-box-value', String(handPot(hand))));
+
+  // Show the pots splitting as they form, rather than springing it on people
+  // at showdown.
+  const pots = sidePots(state.game);
+  if (pots.length > 1) {
+    const breakdown = el('div', 'pot-breakdown');
+    pots.forEach((pot, index) => {
+      const row = el('div', 'pot-slice');
+      row.append(
+        el('span', 'pot-slice-name', pot.isMain ? 'קופה ראשית' : `קופת צד ${index}`)
+      );
+      row.append(el('span', 'pot-slice-amount', String(pot.amount)));
+      row.append(
+        el(
+          'span',
+          'pot-slice-who',
+          pot.eligibleIds.map((id) => findPlayer(id)?.name).filter(Boolean).join(' · ')
+        )
+      );
+      breakdown.append(row);
+    });
+    potBox.append(breakdown);
+  }
+
   felt.append(potBox);
 
   const streets = el('div', 'street-row');
@@ -1467,40 +1499,75 @@ function actionBtn(label, action, id, extraClass = '', data = {}) {
   return b;
 }
 
-/** Tap whoever took it. Tapping more than one splits the pot between them. */
+/**
+ * One selector per pot. With no all-ins there is a single pot and this looks
+ * like a plain list of players; when someone was all-in for less, each pot
+ * lists only the players who can actually win it.
+ */
 function renderWinnerPick(hand) {
   const wrap = el('div', 'players bets');
-  const panel = el('div', 'panel winner-pick');
+  const pots = sidePots(state.game);
 
-  panel.append(el('div', 'winner-title', `מי לקח את הקופה של ${handPot(hand)}?`));
-  panel.append(el('p', 'hint', 'אפשר לבחור כמה שחקנים לחלוקת קופה.'));
+  pots.forEach((pot, index) => {
+    const panel = el('div', 'panel winner-pick');
 
-  const options = el('div', 'winner-options');
-  const pool = activePlayers(state.game);
-  for (const player of (pool.length > 0 ? pool : state.game.players)) {
-    const chosen = winnerPick.has(player.id);
-    const b = el('button', `winner-option${chosen ? ' is-chosen' : ''}`);
-    b.type = 'button';
-    b.dataset.action = 'toggle-winner';
-    b.dataset.id = player.id;
-    b.append(el('span', 'winner-name', player.name));
-    b.append(el('span', 'winner-bet', `שם ${Number(hand.bets?.[player.id]) || 0}`));
-    options.append(b);
-  }
-  panel.append(options);
+    const title = el('div', 'winner-title');
+    title.append(
+      document.createTextNode(
+        pots.length === 1 ? 'מי לקח את הקופה?' : pot.isMain ? 'קופה ראשית' : `קופת צד ${index}`
+      )
+    );
+    title.append(el('span', 'winner-amount', String(pot.amount)));
+    panel.append(title);
 
-  const buttons = el('div', 'actions-grid');
+    if (pots.length > 1) {
+      panel.append(
+        el(
+          'p',
+          'hint',
+          pot.isMain
+            ? 'כל מי שנשאר ביד יכול לזכות בקופה הזאת.'
+            : 'רק מי שכיסה את הסכום הזה יכול לזכות בקופה הזאת.'
+        )
+      );
+    }
+
+    const options = el('div', 'winner-options');
+    for (const id of pot.eligibleIds) {
+      const player = findPlayer(id);
+      if (!player) continue;
+      const chosen = winnerPick[index]?.has(id);
+      const b = el('button', `winner-option${chosen ? ' is-chosen' : ''}`);
+      b.type = 'button';
+      b.dataset.action = 'toggle-winner';
+      b.dataset.id = id;
+      b.dataset.pot = String(index);
+      b.append(el('span', 'winner-name', player.name));
+      b.append(el('span', 'winner-bet', `שם ${Number(hand.bets?.[id]) || 0}`));
+      options.append(b);
+    }
+    panel.append(options);
+    wrap.append(panel);
+  });
+
+  const unresolved = pots.filter((_, i) => !winnerPick[i] || winnerPick[i].size === 0).length;
+
+  const buttons = el('div', 'panel actions-grid');
   const confirm = el('button', 'btn btn-primary btn-lg', 'אשר וסגור');
   confirm.type = 'button';
   confirm.dataset.action = 'confirm-winner';
-  confirm.disabled = winnerPick.size === 0;
+  confirm.disabled = unresolved > 0;
   const back = el('button', 'btn btn-ghost', 'חזור');
   back.type = 'button';
   back.dataset.action = 'cancel-winner';
   buttons.append(confirm, back);
-  panel.append(buttons);
+  if (unresolved > 0) {
+    buttons.append(
+      el('p', 'hint', `צריך לבחור זוכה לכל קופה - נשארו ${unresolved}.`)
+    );
+  }
+  wrap.append(buttons);
 
-  wrap.append(panel);
   return wrap;
 }
 
@@ -1677,8 +1744,10 @@ function renderRoundLive() {
   const hand = currentHand();
   if (!hand) return;
 
-  const potEl = document.querySelector('.pot-box-value');
-  if (potEl) potEl.textContent = String(handPot(hand));
+  // The felt carries the pot and the side-pot split, both of which change with
+  // every keystroke. It holds no inputs, so replacing it keeps the caret put.
+  const felt = document.querySelector('.felt');
+  if (felt) felt.replaceWith(renderFelt(hand));
 
   for (const player of state.game.players) {
     const input = document.querySelector(`input[data-action="bet-set"][data-id="${player.id}"]`);

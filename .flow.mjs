@@ -47,10 +47,18 @@ await page.screenshot({path:`${OUT}/f3-flop.png`});
 // close hand -> tap winner
 await page.click('[data-action="close-hand"]');
 await page.waitForTimeout(250);
-console.log('winner options (folded excluded, expect 2):', await page.locator('.winner-option').count());
+console.log('winner panels:', await page.locator('.winner-pick').count());
+console.log('winner options total:', await page.locator('.winner-option').count());
 await page.screenshot({path:`${OUT}/f4-winner.png`});
-await page.locator('[data-action="toggle-winner"]').first().click();
-await page.waitForTimeout(150);
+// pick a winner in every panel that still needs one
+const panels = await page.locator('.winner-pick').count();
+for (let i = 0; i < panels; i++) {
+  const p = page.locator('.winner-pick').nth(i);
+  if (await p.locator('.winner-option.is-chosen').count() === 0) {
+    await p.locator('[data-action="toggle-winner"]').first().click();
+    await page.waitForTimeout(120);
+  }
+}
 await page.click('[data-action="confirm-winner"]');
 await page.waitForTimeout(300);
 console.log('hand closed:', await page.locator('[data-action="start-hand"]').count() > 0);
