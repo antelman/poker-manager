@@ -10,6 +10,11 @@ import {
   playerStackChips,
   closeHand,
   buyInChips,
+  currentBet,
+  callAmount,
+  blindBets,
+  activePlayers,
+  STREETS,
 } from './src/engine.js';
 
 import { load, save, archive, newGame, newPlayer, exportJSON } from './src/store.js';
@@ -115,6 +120,8 @@ function renderSettings() {
   $('currencyInput').value = g.currency;
   $('modeInput').value = g.mode;
   $('chipsField').hidden = g.mode === 'cash';
+  $('smallBlindInput').value = g.blinds?.small ?? 1;
+  $('bigBlindInput').value = g.blinds?.big ?? 2;
 
   $('settingsPreview').textContent =
     g.mode === 'chips'
@@ -733,13 +740,74 @@ const actions = {
 
   'start-hand'() {
     const last = state.game.hand?.n ?? 0;
-    state.game.hand = newHand(last + 1);
+    const hand = newHand(last + 1);
+    // Blinds are the same two entries every single hand, so post them here.
+    hand.bets = blindBets(state.game);
+    state.game.hand = hand;
     commit();
+  },
+
+  fold(id) {
+    const hand = state.game.hand;
+    if (!hand) return;
+    hand.folded = hand.folded || {};
+    hand.folded[id] = true;
+    commit();
+  },
+
+  unfold(id) {
+    const hand = state.game.hand;
+    if (!hand?.folded) return;
+    delete hand.folded[id];
+    commit();
+  },
+
+  call(id) {
+    const hand = state.game.hand;
+    const player = findPlayer(id);
+    if (!hand || !player) return;
+    const owed = callAmount(player, state.game);
+    if (owed > 0) hand.bets[id] = (Number(hand.bets[id]) || 0) + owed;
+    commit();
+  },
+
+  'all-in'(id) {
+    const hand = state.game.hand;
+    const player = findPlayer(id);
+    if (!hand || !player) return;
+    const stack = playerStackChips(player, state.game);
+    if (stack <= 0) return;
+    hand.bets[id] = (Number(hand.bets[id]) || 0) + stack;
+    commit();
+  },
+
+  'toggle-winner'(id) {
+    if (!winnerPick) return;
+    if (winnerPick.has(id)) winnerPick.delete(id);
+    else winnerPick.add(id);
+    commit();
+  },
+
+  'cancel-winner'() {
+    winnerPick = null;
+    commit();
+  },
+
+  'confirm-winner'() {
+    const hand = state.game.hand;
+    if (!hand || !winnerPick || winnerPick.size === 0) return;
+    const after = closeHand(state.game, [...winnerPick]);
+    for (const p of state.game.players) p.chipsWon = after[p.id];
+    state.game.hand = null;
+    winnerPick = null;
+    actions['next-dealer']();
+    toast('הסיבוב נסגר');
   },
 
   'cancel-hand'() {
     if (!confirm('לבטל את הסיבוב? ההימורים שהוזנו יימחקו ולא ייזקפו לאף אחד.')) return;
     state.game.hand = null;
+    winnerPick = null;
     commit();
   },
 
@@ -793,36 +861,12 @@ const actions = {
   'close-hand'() {
     const hand = state.game.hand;
     if (!hand) return;
-    const pot = handPot(hand);
-    if (pot === 0) {
+    if (handPot(hand) === 0) {
       alert('אין כלום בקופה. תזין הימורים או תבטל את הסיבוב.');
       return;
     }
-
-    const contenders = state.game.players.filter((p) => (hand.bets?.[p.id] || 0) > 0);
-    const pool = contenders.length > 0 ? contenders : state.game.players;
-    const names = pool.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
-    const answer = prompt(
-      `מי לקח את הקופה של ${pot}?\nתכתוב מספר, או כמה מספרים מופרדים בפסיק לחלוקת קופה.\n\n${names}`
-    );
-    if (answer == null) return;
-
-    const winners = answer
-      .split(/[,\s]+/)
-      .map((piece) => pool[Number(piece.trim()) - 1])
-      .filter(Boolean)
-      .map((p) => p.id);
-
-    if (winners.length === 0) {
-      alert('לא זוהה זוכה. הסיבוב נשאר פתוח.');
-      return;
-    }
-
-    const after = closeHand(state.game, winners);
-    for (const p of state.game.players) p.chipsWon = after[p.id];
-    state.game.hand = null;
-    actions['next-dealer']();
-    toast('הסיבוב נסגר');
+    winnerPick = new Set();
+    commit();
   },
 
   /* ---- seating ---- */
@@ -1014,6 +1058,18 @@ $('chipsInput').addEventListener('change', (e) => {
   commit();
 });
 
+$('smallBlindInput').addEventListener('change', (e) => {
+  state.game.blinds = state.game.blinds || {};
+  state.game.blinds.small = Math.max(0, Math.round(Number(e.target.value) || 0));
+  commit();
+});
+
+$('bigBlindInput').addEventListener('change', (e) => {
+  state.game.blinds = state.game.blinds || {};
+  state.game.blinds.big = Math.max(0, Math.round(Number(e.target.value) || 0));
+  commit();
+});
+
 $('currencyInput').addEventListener('change', (e) => {
   state.game.currency = e.target.value;
   commit();
@@ -1126,6 +1182,7 @@ const STREET_CARDS = { preflop: 0, flop: 3, turn: 4, river: 5 };
 let cardPickerSlot = null;
 let pickerRank = null;
 let pickerSuit = null;
+let winnerPick = null; // Set of player ids while choosing who took the pot
 
 function closePicker() {
   cardPickerSlot = null;
@@ -1147,7 +1204,24 @@ function commitCardIfReady() {
   const existing = hand.board.indexOf(card);
   if (existing !== -1 && existing !== cardPickerSlot) hand.board[existing] = undefined;
   hand.board[cardPickerSlot] = card;
-  closePicker();
+
+  const filled = hand.board.filter(Boolean).length;
+  // Dealing the flop is three cards in a row, so walk to the next slot instead
+  // of making the dealer reopen the picker each time.
+  const slot = cardPickerSlot;
+  pickerRank = null;
+  if (slot < 2 && filled < 3) {
+    cardPickerSlot = slot + 1;
+  } else {
+    cardPickerSlot = null;
+    pickerSuit = null;
+  }
+
+  // The street follows the felt: three cards is a flop, four a turn, five a river.
+  const street = filled >= 5 ? 'river' : filled === 4 ? 'turn' : filled >= 3 ? 'flop' : hand.street;
+  if (STREETS.indexOf(street) > STREETS.indexOf(hand.street)) hand.street = street;
+
+  commit();
 }
 
 function currentHand() {
@@ -1253,31 +1327,15 @@ function renderCardPicker() {
 
   const head = el('div', 'card-picker-head');
   head.append(el('span', null, `קלף ${cardPickerSlot + 1}`));
-  const preview = el('span', 'picker-preview');
-  if (pickerRank) preview.append(el('span', 'picker-preview-rank', pickerRank));
-  if (pickerSuit) {
-    const suit = SUITS.find((x) => x.id === pickerSuit);
-    const glyph = el('span', `picker-preview-suit ${'hd'.includes(pickerSuit) ? 'red' : 'black'}`, suit.glyph);
-    preview.append(glyph);
-  }
-  head.append(preview);
   const close = el('button', 'btn btn-ghost', 'סגור');
   close.type = 'button';
   close.dataset.action = 'close-picker';
   head.append(close);
   picker.append(head);
 
-  picker.append(el('span', 'field-label', 'ערך'));
-  const ranks = el('div', 'rank-grid');
-  for (const rank of RANKS) {
-    const b = el('button', `rank-btn${pickerRank === rank ? ' is-chosen' : ''}`, rank);
-    b.type = 'button';
-    b.dataset.action = 'choose-rank';
-    b.dataset.rank = rank;
-    ranks.append(b);
-  }
-  picker.append(ranks);
-
+  // Suit comes first so the ranks below can be drawn in it - once you have
+  // picked hearts, every rank button is a red heart and there is nothing left
+  // to read.
   picker.append(el('span', 'field-label', 'סימן'));
   const suits = el('div', 'suit-grid');
   for (const suit of SUITS) {
@@ -1292,6 +1350,23 @@ function renderCardPicker() {
   }
   picker.append(suits);
 
+  const chosen = SUITS.find((x) => x.id === pickerSuit);
+  picker.append(el('span', 'field-label', chosen ? `ערך · ${chosen.name}` : 'ערך'));
+
+  const ranks = el('div', `rank-grid${chosen ? ' has-suit' : ''}`);
+  for (const rank of RANKS) {
+    const red = chosen && 'hd'.includes(chosen.id);
+    const b = el('button', `rank-btn${chosen ? (red ? ' red' : ' black') : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'choose-rank';
+    b.dataset.rank = rank;
+    b.append(el('span', 'rank-btn-rank', rank));
+    if (chosen) b.append(el('span', 'rank-btn-suit', chosen.glyph));
+    b.setAttribute('aria-label', chosen ? `${rank} ${chosen.name}` : rank);
+    ranks.append(b);
+  }
+  picker.append(ranks);
+
   const clear = el('button', 'btn btn-ghost btn-block', 'נקה את הקלף');
   clear.type = 'button';
   clear.dataset.action = 'clear-card';
@@ -1301,37 +1376,27 @@ function renderCardPicker() {
 
 /** One row per player: what they are sitting behind and what they have bet. */
 function renderBets(hand) {
+  if (winnerPick) return renderWinnerPick(hand);
+
   const wrap = el('div', 'players bets');
+  const toMatch = currentBet(hand);
+  const folded = hand.folded || {};
 
   for (const player of state.game.players) {
     const stack = playerStackChips(player, state.game);
     const bet = Number(hand.bets?.[player.id]) || 0;
-    const row = el('div', `player bet-row${stack < 0 ? ' is-short' : ''}`);
+    const isFolded = Boolean(folded[player.id]);
+    const owed = callAmount(player, state.game);
+
+    const row = el('div', `player bet-row${isFolded ? ' is-folded' : ''}`);
 
     const main = el('div', 'player-main');
     const nameLine = el('div', 'player-name');
     nameLine.append(document.createTextNode(player.name));
     if (dealerName() === player.name) nameLine.append(el('span', 'dealer-badge', 'D'));
+    if (isFolded) nameLine.append(el('span', 'fold-badge', 'פרש'));
     main.append(nameLine);
-    main.append(
-      el('div', 'player-meta', `נשאר ${stack} · הימר ${bet}`)
-    );
-
-    const quick = el('div', 'bet-quick');
-    for (const amount of [1, 5, 10, 25]) {
-      const b = el('button', null, `+${amount}`);
-      b.type = 'button';
-      b.dataset.action = 'bet-add';
-      b.dataset.id = player.id;
-      b.dataset.amount = String(amount);
-      quick.append(b);
-    }
-    const clear = el('button', 'bet-clear', '↺');
-    clear.type = 'button';
-    clear.dataset.action = 'bet-clear';
-    clear.dataset.id = player.id;
-    clear.setAttribute('aria-label', `אפס את ההימור של ${player.name}`);
-    quick.append(clear);
+    main.append(el('div', 'player-meta', `נשאר ${stack} · בקופה ${bet}`));
 
     const field = el('div', 'count-input');
     const input = document.createElement('input');
@@ -1340,10 +1405,32 @@ function renderBets(hand) {
     input.min = '0';
     input.value = bet ? String(bet) : '';
     input.placeholder = '0';
+    input.disabled = isFolded;
     input.dataset.action = 'bet-set';
     input.dataset.id = player.id;
     input.setAttribute('aria-label', `הימור של ${player.name}`);
     field.append(input);
+
+    const quick = el('div', 'bet-quick');
+
+    if (isFolded) {
+      quick.append(actionBtn('החזר למשחק', 'unfold', player.id, 'wide'));
+    } else {
+      quick.append(actionBtn('פרש', 'fold', player.id, 'fold'));
+
+      // The one action taken most often: match the table in a single tap.
+      if (owed > 0) {
+        quick.append(actionBtn(`השווה ${owed}`, 'call', player.id, 'call'));
+      } else {
+        quick.append(actionBtn("צ'ק", 'call', player.id, 'call'));
+      }
+
+      for (const amount of raiseSteps(toMatch)) {
+        quick.append(actionBtn(`+${amount}`, 'bet-add', player.id, '', { amount }));
+      }
+
+      if (stack > 0) quick.append(actionBtn('אול-אין', 'all-in', player.id, 'allin'));
+    }
 
     row.append(main, field, quick);
     wrap.append(row);
@@ -1360,6 +1447,60 @@ function renderBets(hand) {
   actions.append(cancel);
   wrap.append(actions);
 
+  return wrap;
+}
+
+/** Raise steps scaled to the blinds, so the buttons stay useful all night. */
+function raiseSteps(toMatch) {
+  const big = Number(state.game.blinds?.big) || 0;
+  if (big > 0) return [big, big * 2, big * 5];
+  const base = toMatch > 0 ? toMatch : 5;
+  return [base, base * 2];
+}
+
+function actionBtn(label, action, id, extraClass = '', data = {}) {
+  const b = el('button', extraClass, label);
+  b.type = 'button';
+  b.dataset.action = action;
+  b.dataset.id = id;
+  for (const [key, value] of Object.entries(data)) b.dataset[key] = String(value);
+  return b;
+}
+
+/** Tap whoever took it. Tapping more than one splits the pot between them. */
+function renderWinnerPick(hand) {
+  const wrap = el('div', 'players bets');
+  const panel = el('div', 'panel winner-pick');
+
+  panel.append(el('div', 'winner-title', `מי לקח את הקופה של ${handPot(hand)}?`));
+  panel.append(el('p', 'hint', 'אפשר לבחור כמה שחקנים לחלוקת קופה.'));
+
+  const options = el('div', 'winner-options');
+  const pool = activePlayers(state.game);
+  for (const player of (pool.length > 0 ? pool : state.game.players)) {
+    const chosen = winnerPick.has(player.id);
+    const b = el('button', `winner-option${chosen ? ' is-chosen' : ''}`);
+    b.type = 'button';
+    b.dataset.action = 'toggle-winner';
+    b.dataset.id = player.id;
+    b.append(el('span', 'winner-name', player.name));
+    b.append(el('span', 'winner-bet', `שם ${Number(hand.bets?.[player.id]) || 0}`));
+    options.append(b);
+  }
+  panel.append(options);
+
+  const buttons = el('div', 'actions-grid');
+  const confirm = el('button', 'btn btn-primary btn-lg', 'אשר וסגור');
+  confirm.type = 'button';
+  confirm.dataset.action = 'confirm-winner';
+  confirm.disabled = winnerPick.size === 0;
+  const back = el('button', 'btn btn-ghost', 'חזור');
+  back.type = 'button';
+  back.dataset.action = 'cancel-winner';
+  buttons.append(confirm, back);
+  panel.append(buttons);
+
+  wrap.append(panel);
   return wrap;
 }
 

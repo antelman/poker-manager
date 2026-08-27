@@ -246,3 +246,53 @@ export function closeHand(game, winnerIds) {
 
   return result;
 }
+
+/* --------------------------------------------------------- betting helpers */
+
+/** Players still in the hand: everyone who has not folded. */
+export function activePlayers(game) {
+  const folded = game.hand?.folded || {};
+  return game.players.filter((p) => !folded[p.id]);
+}
+
+/** The amount to match this betting round - the largest bet anyone has made. */
+export function currentBet(hand) {
+  if (!hand) return 0;
+  return Object.values(hand.bets || {}).reduce(
+    (max, n) => Math.max(max, Number(n) || 0),
+    0
+  );
+}
+
+/**
+ * What a player must add to match the table, capped at the chips they have.
+ * Going all-in for less than the call is a real situation, so it is not an
+ * error - the caller just gets the smaller number.
+ */
+export function callAmount(player, game) {
+  const hand = game.hand;
+  if (!hand) return 0;
+  const owed = currentBet(hand) - (Number(hand.bets?.[player.id]) || 0);
+  const available = playerStackChips(player, game);
+  return Math.max(0, Math.min(owed, available));
+}
+
+/**
+ * Blinds for a new hand, posted by the two seats after the dealer.
+ * Heads-up (two players) posts the small blind on the dealer, as it is played.
+ */
+export function blindBets(game) {
+  const players = game.players;
+  const small = Number(game.blinds?.small) || 0;
+  const big = Number(game.blinds?.big) || 0;
+  if (players.length < 2 || (small === 0 && big === 0)) return {};
+
+  const dealer = ((game.dealerIndex ?? 0) % players.length + players.length) % players.length;
+  const smallSeat = players.length === 2 ? dealer : (dealer + 1) % players.length;
+  const bigSeat = (smallSeat + 1) % players.length;
+
+  const bets = {};
+  if (small > 0) bets[players[smallSeat].id] = small;
+  if (big > 0) bets[players[bigSeat].id] = big;
+  return bets;
+}

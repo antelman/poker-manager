@@ -43,6 +43,7 @@ function packGame(game) {
     k: game.chipsPerBuyIn,
     a: game.adjustment,
     d: game.dealerIndex ?? 0,
+    bl: game.blinds ?? null,
     h: game.hand ?? null,
     x: game.paid ?? null,
     p: game.players.map((p) => ({
@@ -51,6 +52,7 @@ function packGame(game) {
       b: p.buyIns,
       o: p.cashOut,
       s: p.stack ?? null,
+      w: p.chipsWon ?? 0,
     })),
   };
 }
@@ -64,6 +66,7 @@ function unpackGame(packed, current) {
     chipsPerBuyIn: packed.k,
     adjustment: packed.a ?? null,
     dealerIndex: packed.d ?? 0,
+    blinds: packed.bl ?? { small: 1, big: 2 },
     hand: packed.h ?? null,
     paid: packed.x ?? {},
     players: (packed.p || []).map((p) => ({
@@ -72,6 +75,7 @@ function unpackGame(packed, current) {
       buyIns: p.b || [],
       cashOut: p.o ?? null,
       stack: p.s ?? null,
+      chipsWon: p.w ?? 0,
     })),
   };
 }
@@ -153,6 +157,47 @@ export function createSync({ onState, onStatus, onPeers }) {
     }
   }
 
+  /**
+   * Pull the most recent game the relay still holds.
+   *
+   * Without this a device joining late only gets the table if some other
+   * device happens to be open to answer its request - so someone arriving
+   * after a hand started, or reopening a phone that went to sleep, would sit
+   * looking at an empty game. ntfy keeps recent messages, so the last
+   * broadcast can be read back directly.
+   */
+  async function fetchRetained() {
+    try {
+      const response = await fetch(topicUrl('/json?poll=1&since=12h'));
+      if (!response.ok) return null;
+      const text = await response.text();
+
+      let best = null;
+      for (const line of text.split('\n')) {
+        if (!line.trim()) continue;
+        let event;
+        try {
+          event = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (event.event && event.event !== 'message') continue;
+        let message;
+        try {
+          message = JSON.parse(event.message);
+        } catch {
+          continue;
+        }
+        if (message?.t === 'state' && message.g && (!best || message.v >= best.v)) {
+          best = message;
+        }
+      }
+      return best;
+    } catch {
+      return null;
+    }
+  }
+
   return {
     get code() {
       return code;
@@ -184,8 +229,23 @@ export function createSync({ onState, onStatus, onPeers }) {
         setStatus(source && source.readyState === 1 ? 'live' : 'error');
       };
 
-      // Ask whoever is already here for the current game.
-      setTimeout(() => send({ t: 'req' }), 400);
+      // Two ways to catch up, because either can come up empty: read the last
+      // broadcast the relay still holds, and ask any live device directly.
+      fetchRetained().then((message) => {
+        if (!message || message.v <= version) return;
+        version = message.v;
+        onState?.(message.g, { version: message.v, from: message.d, retained: true });
+      });
+
+      // Retry the request: a peer may still be connecting when the first goes out.
+      let attempts = 0;
+      const ask = () => {
+        if (!code || attempts >= 3) return;
+        attempts += 1;
+        send({ t: 'req' });
+        setTimeout(ask, 1500);
+      };
+      setTimeout(ask, 400);
     },
 
     disconnect() {

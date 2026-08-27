@@ -21,6 +21,9 @@ export function newGame(previous) {
     mode: previous?.mode ?? 'chips',
     buyInCents: previous?.buyInCents ?? 5000,
     chipsPerBuyIn: previous?.chipsPerBuyIn ?? 100,
+    blinds: previous?.blinds ? { ...previous.blinds } : { small: 1, big: 2 },
+    dealerIndex: 0,
+    hand: null,
     players: [],
     adjustment: null,
   };

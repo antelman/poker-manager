@@ -306,3 +306,71 @@ test('chips are conserved across a run of hands', () => {
   const total = g.players.reduce((s, p) => s + playerStackChips(p, g), 0);
   assert.equal(total, 200); // nothing created, nothing destroyed
 });
+
+/* -------------------------------------------------------- betting helpers */
+
+import { activePlayers, currentBet, callAmount, blindBets } from '../src/engine.js';
+
+test('currentBet is the largest bet on the table', () => {
+  assert.equal(currentBet(null), 0);
+  assert.equal(currentBet({ bets: {} }), 0);
+  assert.equal(currentBet({ bets: { a: 10, b: 25, c: 5 } }), 25);
+});
+
+test('callAmount is what is needed to match, capped by the stack', () => {
+  const p = { id: 'a', name: 'A', buyIns: [5000], chipsWon: 0 };
+  const other = { id: 'b', name: 'B', buyIns: [5000], chipsWon: 0 };
+  const g = handGame([p, other], { bets: { a: 10, b: 40 } });
+
+  assert.equal(callAmount(p, g), 30);
+  assert.equal(callAmount(other, g), 0);
+
+  // A short stack can only call for what it has left.
+  const short = { id: 'c', name: 'C', buyIns: [5000], chipsWon: -95 };
+  const g2 = handGame([short, other], { bets: { b: 40 } });
+  assert.equal(callAmount(short, g2), 5);
+});
+
+test('activePlayers drops anyone who folded', () => {
+  const g = handGame(
+    [
+      { id: 'a', name: 'A', buyIns: [] },
+      { id: 'b', name: 'B', buyIns: [] },
+    ],
+    { bets: {}, folded: { b: true } }
+  );
+  assert.deepEqual(activePlayers(g).map((p) => p.id), ['a']);
+});
+
+test('blindBets posts on the two seats after the dealer', () => {
+  const players = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id, buyIns: [] }));
+  const g = { ...handGame(players, null), blinds: { small: 1, big: 2 }, dealerIndex: 0 };
+  assert.deepEqual(blindBets(g), { b: 1, c: 2 });
+
+  g.dealerIndex = 3;
+  assert.deepEqual(blindBets(g), { a: 1, b: 2 });
+});
+
+test('blindBets puts the small blind on the dealer when heads up', () => {
+  const players = ['a', 'b'].map((id) => ({ id, name: id, buyIns: [] }));
+  const g = { ...handGame(players, null), blinds: { small: 1, big: 2 }, dealerIndex: 0 };
+  assert.deepEqual(blindBets(g), { a: 1, b: 2 });
+});
+
+test('blindBets is empty when blinds are off or the table is too small', () => {
+  const players = ['a', 'b'].map((id) => ({ id, name: id, buyIns: [] }));
+  assert.deepEqual(blindBets({ ...handGame(players, null), blinds: { small: 0, big: 0 } }), {});
+  assert.deepEqual(blindBets({ ...handGame([players[0]], null), blinds: { small: 1, big: 2 } }), {});
+});
+
+test('folded players still lose what they already put in', () => {
+  const players = [
+    { id: 'a', name: 'A', buyIns: [5000], chipsWon: 0 },
+    { id: 'b', name: 'B', buyIns: [5000], chipsWon: 0 },
+  ];
+  const g = handGame(players, { bets: { a: 20, b: 5 }, folded: { b: true } });
+  const after = closeHand(g, ['a']);
+  assert.equal(after.b, -5);
+  assert.equal(after.a, 5);
+  assert.equal(after.a + after.b, 0);
+});

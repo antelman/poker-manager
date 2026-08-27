@@ -1205,3 +1205,62 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   #main > .view { display: none; }
   #main > .view:not([hidden]) { display: flex; }
 }
+
+/* ---- rank buttons carry the chosen suit ---- */
+
+.rank-btn { display: grid; place-items: center; gap: 0; line-height: 1.05; }
+.rank-btn-rank { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; }
+.rank-btn-suit { font-size: .85rem; line-height: 1; }
+.rank-btn.red .rank-btn-rank, .rank-btn.red .rank-btn-suit { color: var(--lose); }
+.rank-btn.black .rank-btn-rank, .rank-btn.black .rank-btn-suit { color: var(--text); }
+.rank-grid.has-suit .rank-btn { background: var(--surface); border-color: var(--line); }
+.rank-grid:not(.has-suit) .rank-btn { opacity: .62; }
+
+/* ---- fold / call / raise ---- */
+
+.bet-row.is-folded { opacity: .5; }
+.bet-row.is-folded .player-name { text-decoration: line-through; }
+
+.fold-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  margin-inline-start: 7px;
+  vertical-align: middle;
+}
+
+.bet-quick .fold { color: var(--lose); border-color: rgba(191, 54, 57, .4); }
+.bet-quick .call { color: var(--on-brass); background: var(--brass); border-color: var(--brass-strong); }
+.bet-quick .allin { color: var(--text-dim); }
+.bet-quick .wide { flex: 1 0 100%; }
+
+/* ---- winner picker ---- */
+
+.winner-pick { display: flex; flex-direction: column; gap: 12px; }
+.winner-title { font-family: var(--serif); font-weight: 700; font-size: 1.15rem; }
+.winner-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; }
+
+.winner-option {
+  min-height: 62px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px;
+}
+
+.winner-option.is-chosen { background: var(--brass); border-color: var(--brass-strong); color: var(--on-brass); }
+.winner-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; }
+.winner-bet { font-size: .74rem; opacity: .8; font-variant-numeric: tabular-nums; }
+.winner-option:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: default; }
