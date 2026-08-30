@@ -1,0 +1,145 @@
+{
+ "note": "Corner symbols read off a photograph of a real deck on a dark table, taken with a phone propped over it, together with the templates the app draws for itself when a deck has not been taught. Regenerated only if the extraction changes on purpose.",
+ "cards": [
+  {
+   "label": "Jc",
+   "red": false,
+   "rank": {
+    "bits": "AAAAAAAB8AAAAAB///4AAAAB////AAAAB////wAAAD////8AAAB/////AAAB/////wAAB/////4AAA/////+AAAP/////gAAH/////wAAA/////4AAAP////+AAAB/////AAAAH////wAAAAP///4AAAAAH//8AAAAAA///AAAAAAD//gAAAAAAf/4AAAAAAH/+AAAAAAAP/gAAAAAAD/4AAAAAAA/+AAAAAAAP/gAAAAAAD/4AAAAAAAf+AAAAAAAH/gAAAAAAB/4AAAAAAAf+AAAAAAAH/gAAAAAAB/4AAAAAAAP+AAAAAAAD/wAAAAAAA/8AAAAAAAP/AAAAAAAD/4AAAAAAAf+AAAAAAAH/wAAAAAAB/8AAAAAAA//AAAAAAAP/wAAAAAAH/8AAAAAAA//AAAAAAAP/wAAAAAAD/8AAAAAAA//AAAAAAAP/wAAAAAAD/4AAAAAAAf+AAAAAAAH/gAAAAAAB/wAAAAAAAf8AAAAAAAH/AAAAAAAA/wAAAAAAAP8AAAAAAAD/AAAAAAAA/wAAAAAAAP8AAAAAAAD/AAAAAAAA/wAAAAAAAf8AAAAAAAH/AAAAAAAB/wAAAAAAA/+AAAAAAAf/AAAAAAAP/wAAAAAAf/8AAAAAAP//AAAAAAP//wAAAAAf//4AAAAAP//+AAAAAf///AAAAB////wAAAB////wAAAL////8AAAH////+AAAH////+AAAP/////AAAP/////gAAf/////wAAf/////wAAP/////4AAA/////4AAAD////4AAAAP///wAAAAB///4AAAAAB//gAAAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.5
+   },
+   "suit": {
+    "bits": "AAAAQAAAAAAAAfgAAAAAAAf4AAAAAAAP/AAAAAAAH/8AAAAAAD//gAAAAAB//4AAAAAAf/+AAAAAAP//wAAAAAD//8AAAAAA///gAAAAAP//4AAAAAD//+AAAAAA///gAAAAAP//4AAAAAD//+AAAAAA///gAAAAAP//4AAAAAH//+AAAAAA///gAAAAAf//4AAAAAH//+AAAAAD///gAAAAA///4AAAAAP//+AAAAAH///gAAAAB///4AAAAA///8AAAAAP///AAAAAH///gAAAAD///4AAAAB///8AAAAA////AAAAAf///wAAAAP///8AAAAH////gAAAB/////gAAA/////+AAAf//////gAP///////wH////////B////////4f////////H////////7////////+/////////v//////////////////f////////3////////9/////////f////////3////////9////////+f////////n////////5////////8P///n///+D///x////gf//4P///wH//4H///4A//8B///4AH/8Af/+AAAf4AH/+AAAAAAB//AAAAAAAf/wAAAAAAH/4AAAAAAB/8AAAAAAAf/AAAAAAAH/gAAAAAAB/wAAAAAAAfwAAA",
+    "width": 56,
+    "height": 72,
+    "aspect": 0.9775
+   }
+  },
+  {
+   "label": "8h",
+   "red": true,
+   "rank": {
+    "bits": "AAB8AAAAAAAB/gAAAAAAA/8AAAAAAAf/gAAAAAAP/4AAAAAAH/+AAAAeAD//gAAAHAB//4AAAB4Af/+AAAAeAH//AAAAPgD//gAAAD4A//4AAAB/Af/+AAAAfwH//AAAAP8B//gAAAD/A//wAAAB/wP/4AAAAf8D/8AAAAH/A/+AAAAD/wP/AAAAA/4B/gAAAAf+APgAAAAP/AAAAAAAD/wAAAAAAB/8AAAAAAA//AAAAAAAP/gAAAAAAH/4AAAAAAB/+AAAAAAA//AAAAAAAP/wAAAAAAH/8AAAAAAB//AAAeAAA//wAAPwAAP/4AAD+AAH/8AAB/gAD//AAA/4AA//gAAf+AAf/wAAf/wAP/4AAH/8AH/4AAD//gD/8AAA//4B/4AAAf//Af8AAAP//gAAAAAD//4AAAAAA//8AAAAAAP/+AAAAAAH//AAAAAAD//AAAAAAA//gAAAAAAf/4AAAAAAH/8AAAAAAD//AAAAAAA//wAAAAAAf/4AAAAAAH/8AAAAAAB//AAAAAAAf/gAAAAAAH/4AAAAAAD/8AAAAAAY/+AAAAAAPH/gAAAAAHx/4AAAAAB8f8AAAAAA/j+AAAAAAfweAAAAAAH8AAAAAAAD/AAAAAAAB/gAAAAAAA/4AAAAAAAf+AAAAAAAP/AAAAAAAD/wAAAAAAB/8AAAAAAA/+AAAAAAAP/gAAAAAAH/wAAAAAAB/8AAAAAAA//AAAAAAA//gAAAAAAf/wAAAAAAH/4AAAAAAD/8AAAAAAB/+AAAAAAB//AAAAAAA//AAAAAAAf/gAAAAAAH/wAAAAAAA/wAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6378
+   },
+   "suit": {
+    "bits": "AHAAAAAAAAH+AAAAAAAD/wAAAAAAD//AAD//AB//4AB//4A//+AA///Af//8B///8H///g////j////////4/////////v////////7///////////////////////////9/////////f////////3////////9/////////P////////z////////8f////////H////////x////////8P////////D////////w////////8H///////+A////////gP///////wB///////8Af//////+AH///////gA///////4AH//////+AA///////gAP//////wAB//////4AAf/////+AAH//////AAA//////wAAH/////4AAB/////+AAAP/////AAAD/////wAAAf////8AAAH/////AAAAf////AAAAH////gAAAB////4AAAAP///+AAAAD////AAAAA////gAAAAP///4AAAAB///8AAAAAf///AAAAAD///gAAAAA///wAAAAAP//8AAAAAD//+AAAAAA///AAAAAAP//wAAAAAD//8AAAAAAf/+AAAAAAH//gAAAAAB//wAAAAAAf/4AAAAAAH/8AAAAAAB//AAAAAAAP/gAAAAAAD/gAAAAAAA/wAAAAAAAH4AAAA",
+    "width": 56,
+    "height": 72,
+    "aspect": 0.7553
+   }
+  }
+ ],
+ "templates": {
+  "ranks": {
+   "2": {
+    "bits": "AAAB/8AAAAAAH//8AAAAAP///wAAAAH////gAAAH////8AAAH/////wAAH//////AAB//////4AA///////AAf//////wAP//////+AD///////wB///////8Af///////gP///////4D///AH//+B//+AAP//wf//AAD//8H//wAAf//B//8AAD//w//+AAA//+P//AAAH//j//wAAB//4//8AAAf/+P//AAAH//j//gAAB//4AAAAAAf/+AAAAAAH//gAAAAAB//4AAAAAA//8AAAAAAP//AAAAAAH//wAAAAAB//4AAAAAA//+AAAAAAP//gAAAAAD//4AAAAAD//8AAAAAB///AAAAAA///gAAAAAP//4AAAAAH//8AAAAAD///AAAAAB///gAAAAA///wAAAAAf//4AAAAAP//+AAAAAP///AAAAAH///AAAAAB///gAAAAB///4AAAAA///8AAAAAf//+AAAAAP///AAAAAH///AAAAAD///gAAAAA///4AAAAA///8AAAAAf//4AAAAAP//+AAAAAD///AAAAAB///AAAAAA///wAAAAAf//4AAAAAP//4AAAAAH//+AAAAAB///AAAAAA///gAAAAAf//wAAAAAH//4AAAAAD//8AAAAAB//+AAAAAAf//gAAAAAH//wAAAAAD//8AAAAAA/////////f////////3///////////////////////////////////////////////////////////////////////////////////////////////////////////////w==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6952
+   },
+   "3": {
+    "bits": "AAAB/+AAAAAAD//8AAAAAH///4AAAAH////gAAAH/////AAAH/////4AAD//////AAB//////4AA///////AAf//////4AP//////+AD///////wB///////8A////////gP//8Af//4H//8AD//+B//+AAf//gf//AAD//8H//gAAf//D//4AAH//w//8AAA//8P//AAAP//D//wAAD//w//4AAAf/+AA+AAAH//AAAAAAB//wAAAAAAf/8AAAAAAP//AAAAAAD//wAAAAAA//4AAAAAAf/+AAAAAAH//gAAAAAB//4AAAAAA//8AAAAAA///AAAAAAf//gAAAAAf//wAAAD////4AAAA////8AAAAP///+AAAAD////AAAAA////AAAAAP//8AAAAAD//+AAAAAA///+AAAAAP///4AAAAD////wAAAA/////AAAAP////wAAAD////+AAAA/////wAAAAAD//+AAAAAAf//wAAAAAB//8AAAAAAf//gAAAAAD//4AAAAAAf//AAAAAAD//wAAAAAA//8AAAAAAP//AAAAAAD//wAAAAAA//8AAwAAAP//A/8AAAD/////AAAA/////4AAAP////+AAAD//3//gAAA//9//8AAAP//f//AAAH//z//4AAD//8///AAB///P//4AAf//h///AAf//4f///////+H////////A////////gH///////4B///////8AP//////+AB///////AAP//////wAB//////4AAP/////4AAA/////4AAAB////8AAAAP///4AAAAAf//4AAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6916
+   },
+   "4": {
+    "bits": "AAAAA//+AAAAAAP//gAAAAAH//4AAAAAB//+AAAAAA///gAAAAAf//4AAAAAH//+AAAAAD///gAAAAA///4AAAAAf//+AAAAAH///gAAAAD///4AAAAB///+AAAAAf///gAAAAH///4AAAAD///+AAAAA////gAAAAf///4AAAAP/3/+AAAAD/9//gAAAB/+f/4AAAAf/n/+AAAAP/5//gAAAD/8f/4AAAB/+H/+AAAAf/h//gAAAP/wf/4AAAD/8P/+AAAA//D//gAAA//g//4AAAP/wP/+AAAH/8D//gAAB/+A//4AAAf/gP/+AAAP/wD//gAAH/8A//4AAB/+AP/+AAA//AD//gAAP/wA//4AAH/4AP/+AAB/+AD//gAA//AA//4AAP/wAP/+AAH/4AD//gAD/+AA//4AA//gAP/+AAf/wAD//gAH/4AA//4AD/+AAP/+AA//AAD//gAP/wAA//4AH/4AAP/+AD/8AAD//gA//AAA//4Af/gAAP/+AH/4AAD//gD/8AAA//4A//AAAP/+AP////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8AAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.7767
+   },
+   "5": {
+    "bits": "B///////8Af///////AH///////wB///////8Af///////AH///////wB///////8Af///////AH///////wB///////8Af///////AH///////wB///////8Af/4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAD//gAAAAAA//4AAAAAAP/+AAAAAAH//gAAAAAB//4AAAAAAf/+AAAAAAH//gD/wAAB//4f//4AAf/+f///AAH//v///8AB///////gAf//////4AH///////gB///////8Af///////gH///////4B////////Af///////4H///////+B////////wf//+A///8H//8AD///h//+AAP//4f/+AAB///H//gAAP//wAAAAAD//8AAAAAAf//AAAAAAH//wAAAAAA//8AAAAAAP//AAAAAAD//wAAAAAA//8AAAAAAP//AAAAAAD//wAAAAAA//8AAAAAAP//AAAAAAD//wAAAAAA//8AAAAAAP//AAAAAAD//wAPAAAA//8f/wAAAP////8AAAD/////gAAB//9//8AAA///f//AAAP//n//4AAH//4//+AAB//+P//4AB///B///gB///gf///////4H///////+A////////AP///////gA///////wAP//////8AB//////+AAP//////AAB//////AAAH/////gAAA/////wAAAD////wAAAAf///wAAAAAf//gAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.7048
+   },
+   "6": {
+    "bits": "AAAA//AAAAAAD//+AAAAAB///8AAAAB////gAAAD/////AAAB/////4AAA//////AAAf/////4AAP/////+AAH//////wAB//////+AA///////wAf//////8AH///////gD///g///4A///AB//+Af//AAP//gH//gAB//8D//4AAP//A//8AAD//wf/+AAA/+AH//gAAHAAB//4AAAAAAf/8AAAAAAH//AAAAAAD//wAAAAAA//8AAAAAAP//AAAAAAD//gAAAAAB//4AAAAAAf/+AAAAAAH//gAAAAAB//4Af/gAAf/8AP//AAP//A///+AD//w////wA//8P////AP//H////4D//z////+A//9/////4P///////+D////////w////////+P////////j///+B///8///+AD///P///AAf//7///gAD//+///wAAf//v//4AAD/////8AAA//////AAAH/////wAAB/////8AAAf/////AAAD/////gAAA/////4AAAP//f/+AAAD//3//gAAA//9//4AAAH//f//AAAB//3//wAAA//8//8AAAP//P//AAAD//z//wAAA//8f/8AAAP//H//AAAH//x//4AAB//8f//AAAf//H//wAAP//g//+AAD//4P//gAB//+B//8AA///Af//wA///wD///g///4A///////+AP///////gB///////wAP//////4AB//////8AAP/////+AAB//////gAAP/////wAAB/////wAAAH////wAAAAf///wAAAAD///4AAAAAH//wAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6792
+   },
+   "7": {
+    "bits": "////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////AAAAAAB//wAAAAAA//8AAAAAAf/+AAAAAAH//AAAAAAD//gAAAAAA//4AAAAAAf/8AAAAAAP//AAAAAAD//gAAAAAB//4AAAAAAf/8AAAAAAP/+AAAAAAH//gAAAAAB//wAAAAAA//8AAAAAAf/+AAAAAAH//gAAAAAD//wAAAAAA//8AAAAAAf/+AAAAAAP//AAAAAAH//wAAAAAB//8AAAAAAf/+AAAAAAP//gAAAAAD//wAAAAAB//4AAAAAA//8AAAAAAP//AAAAAAH//wAAAAAB//8AAAAAAf/+AAAAAAP//gAAAAAD//wAAAAAB//8AAAAAAf/+AAAAAAP//gAAAAAD//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//4AAAAAA//+AAAAAAP//gAAAAAH//wAAAAAB//8AAAAAA//+AAAAAAP//gAAAAAD//4AAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAD//4AAAAAA//+AAAAAAP//gAAAAAH//4AAAAAB//+AAAAAAf//gAAAAAH//wAAAAAB//8AAAAAA///AAAAAAP//wAAAAAD//8AAAAAA///AAAAAAP//wAAAAAD//4AAAAAA//+AAAAAAP//gAAAAAD//4AAAAAA//+AAAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6796
+   },
+   "8": {
+    "bits": "AAAP//AAAAAAf///AAAAAf///8AAAAf////wAAA//////AAAf/////4AAH//////AAD//////4AB///////AA///////4AP///////AH///////wD///gf//+A///gA///gf//gAH//4H//wAAf/+B//4AAH//gf/+AAB//8H//gAAf//B//4AAD//wf/+AAA//8H//gAAP//D//4AAD//w//8AAA//8H//AAAP//B//4AAD//wf/+AAA//8H//gAAP//B//4AAD//wf/+AAA//4H//gAAf/+A//8AAH//gP//AAB//4B//4AA//8AP//gA//+AD//+B///AAf//////wAD//////4AAf/////8AAD/////8AAAH////8AAAAf///8AAAAD///+AAAAP/////AAAf/////4AAH//////gAH//////8AD///////AB///////8A///AAf//gP//gAD//4H//gAAf/+B//4AAH//w//8AAA//+P//AAAH//n//gAAA//9//4AAAP//f/+AAAD/////gAAA/////wAAAP////8AAAD/////AAAA/////wAAAP////8AAAD/////AAAA/////wAAAP////+AAAD/////gAAA//9//4AAAP//f//AAAH//3//wAAB//8//+AAA//+P//gAAP//j//+AAP//4f//wAH//8H//+AD//+B////////gP///////4D///////8AP//////+AD///////AAf//////wAB//////4AAP/////4AAA/////4AAAH////8AAAAf///4AAAAAf//wAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6981
+   },
+   "9": {
+    "bits": "AAAH/+AAAAAAP//8AAAAAP///wAAAAP////AAAAf////8AAAP/////gAAH/////8AAD//////gAB//////8AAf//////gAP//////8AH///////AD///////wA///////+Af//+B///wH//8AD//8B//+AAf//gf//AAD//4P//wAA//+D//4AAH//g//8AAA//8f//AAAP//H//gAAB//x//4AAAf/8f/+AAAH//n//gAAB//5//4AAAf/+f/+AAAH//3//gAAB/////4AAAf//f/+AAAH//3//gAAB//9//4AAAf//f/+AAAH//3//gAAB//9//4AAAf//f//AAAH//z//wAAB//8//+AAA///P//gAAf//x//8AAP//8f//gAD///H//8AB///x///4H///8P////////D////////wf///////8D////////A/////9//wH/////f/8A/////n//AH////x//wB////4f/8AP///8P//AAf//4D//wAB//4A//8AAH/4AP//AAAAAAD//wAAAAAA//8AAAAAAf/+AAAAAAH//gAAAAAB//4AAAAAAf/+AAAAAAH//AAAAAAB//wAAAAAA//8AAeAAAP/+AH/gAAD//gf/8AAB//4H//AAA//+B//4AAP//Af//AAH//wH//wAD//8A///gD//+AP///H///AB///////wAf//////8AD//////+AA///////AAH//////gAA//////4AAP/////8AAB/////8AAAP////+AAAA////+AAAAH////AAAAAf///AAAAAB///AAAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6887
+   },
+   "10": {
+    "bits": "AAAAAAD8AAAAAAAB/wAAf4AAB/+AAH+AAA//wAD/gAAP/8AB/4AAH//gA/+AAB//4AP/gAA///AD/4AAP//wB/+AAH//+A//gAB///gf/4AAf//4H/+AAH//+D//gAD///x//4AA/4f8//+AAP8D/P//gAD/A/z//4AB/gP+/3+AAf4B/v5/gAH+Af7+f4AB/AH+/H+AAfwA/vh/gAH8AP74f4AD/AD+8H+AA/wA/uB/gAP8AP7Af4AD/AD+wH+AA/wA/oB/gAP8AP4Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD/AH+AA/wA/wB/gAP8AP8Af4AD/AD+AH+AA/wA/gB/gAP8AP4Af4AD/AD+AH+AA/wA/gB/gAP8AP4Af4AB/AD+AH+AAfwA/gB/gAH8Af4Af4AB/gH+AH+AAf4B/gB/gAH+Af4Af4AA/wP8AH+AAP8D/AB/gAD/h/wAf4AA/8/4////wH//+P///8B///j////Af//4////wH//+P///8A///D////AP//w////wD//4P///8Af/+D////AH//A////wA//wP///8AH/4D////AA/8A////wAH+AA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 1.2358
+   },
+   "A": {
+    "bits": "AAAH//AAAAAAB//wAAAAAA//8AAAAAAP//AAAAAAD//wAAAAAA//+AAAAAAf//gAAAAAH//4AAAAAB//+AAAAAAf//gAAAAAH//8AAAAAD///AAAAAA///4AAAAAP//+AAAAAH///gAAAAB///4AAAAAf/f+AAAAAH/3/wAAAAD/5/8AAAAA/+f/AAAAAP/n/wAAAAD/4/8AAAAA/+P/gAAAAf/D/4AAAAH/w/+AAAAB/8P/gAAAAf/D/8AAAAH/wf/AAAAD/8H/wAAAA/+B/8AAAAf/gf/AAAAH/4H/4AAAB/+A/+AAAAf/gP/wAAAH/wD/8AAAD/8Af/AAAA/+AH/wAAAP/gB/8AAAD/4Af/gAAA/+AD/4AAAf/gA/+AAAH/wAP/gAAB/8AD/8AAAf/AA//AAAP/wAH/wAAD/8AB/8AAA/+AAf/AAAP/gAH/4AAD/4AB/+AAB/+AAP/gAAf/gAD/8AAP/wAA//AAD//////wAA//////8AAP//////gAD//////4AB//////+AAf//////gAH//////4AB///////AA///////wAP//////8AD///////AA///////wAP//////+AH///////gB/+AAAH/4Af/gAAB/+AH/4AAAf/gB/+AAAD/8A//AAAA//AP/wAAAP/4H/8AAAD/+B//AAAAf/gf/wAAAH/4H/8AAAB/+B/+AAAAf/w//gAAAH/8P/wAAAA//D/8AAAAP/w//AAAAD/8P/wAAAAf/n/8AAAAH/5/+AAAAB/+f/gAAAAf/n/4AAAAH/9/+AAAAA////AAAAAP/w==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.9709
+   },
+   "J": {
+    "bits": "AAAB/////wAAAf////8AAAH/////AAAB/////wAAAf////8AAAH/////AAAB/////wAAAf////8AAAH/////AAAB/////wAAAf////8AAAH/////AAAB/////wAAAf////8AAAH/////AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wAAAAAB//8AAAAAAf//AAAAAAH//wABgAAB//8H/4AAAf/////AAAH/////wAAB/////8AAAf/////gAAH//3//4AAD//9///AAA///f//wAAf//z//8AAH//8///gAD//+P//+AD///h///4D///wf///////4H///////+A////////AP///////wA///////4AH//////8AB///////AAf//////gAD//////gAAH/////wAAA/////wAAAD////4AAAAP///4AAAAAf//4AAA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.6667
+   },
+   "Q": {
+    "bits": "AAAA/4AAAAAAP//8AAAAAP///wAAAAP////AAAAH////8AAAH/////gAAD/////8AAB//////gAA//////8AAf//////gAP//////4AD///////AB//+AH//4Af/+AAf//AP/+AAB//wD//AAAP/+B//gAAB//gf/4AAAP/8H/8AAAB//D//AAAAf/w//gAAAH/8P/wAAAA//j/8AAAAP/5//AAAAB/+f/gAAAAf/n/4AAAAH/9/+AAAAA//f/gAAAAP/3/wAAAAD///8AAAAA////AAAAAP///wAAAAD///8AAAAA////AAAAAP///wAAAAD///8AAAAA////AAAAAP///wAAAAD///8AAAAA////AAAAAP///wAAAAD///8AAAAA//f/gAAAAP/3/4AAAAD/9/+AAAAB/+f/gAAAAf/n/8AAAAH/5//AAAAB/+P/wAAAA//j/+AAAAf/w//gAAAH/8H/8AAAD//B//AAAA//gf/4AAAf/4D//AAAH/8A//4AAH//AH//AAD//wB//8AD//4AP//8P//8AB//////+AAP//////gAB//////wAAf/////4AAD/////8AAAf////+AAAB/////AAAAH///+AAAAA////AAAAAB//+AAAAAAB//AAAAAAAP/4AAAAAAD/+AAAAAAA//gAAAAAAH/8AAAAAAB//AAAAAAAP/8AAAAAAD//gAAAAAA///jgAAAAH///4AAAAB///+AAAAAP///gAAAAB///4AAAAAP//+AAAAAD///gAAAAAf//4AAAAAD//+AAAAAAf//gAAAAAAf/gA==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.7704
+   },
+   "K": {
+    "bits": "//gAAAH//P/4AAAB//z/+AAAA//4//gAAAf/8P/4AAAH//D/+AAAD//g//gAAB//wP/4AAA//4D/+AAAP/+A//gAAH//AP/4AAB//wD/+AAA//4A//gAAf/8AP/4AAP/+AD/+AAD//gA//gAB//wAP/4AAf/8AD/+AAP/+AA//gAH//AAP/4AD//gAD/+AA//4AA//gAf/8AAP/4AH//AAD/+AD//gAA//gB//wAAP/4A//4AAD/+AP/+AAA//gH//AAAP/4D//gAAD/+A//wAAA//gf/8AAAP/4P/+AAAD/+D//gAAA//h//wAAAP/4//4AAAD/+P/8AAAA//n//AAAAP/7//gAAAD////8AAAA/////AAAAP////4AAAD////+AAAA/////wAAAP////+AAAD/////gAAA/////4AAAP/////AAAD/////4AAA/////+AAAP//5//gAAD//8f/8AAA//+D//gAAP//Af/4AAD//gH//AAA//wB//wAAP/4AP/+AAD/+AB//wAA//gAf/8AAP/4AD//AAD/+AA//4AA//gAH//AAP/4AB//wAD/+AAf/8AA//gAD//gAP/4AAf/8AD/+AAD//gA//gAA//4AP/4AAP/+AD/+AAB//wA//gAAP/+AP/4AAD//gD/+AAAf/8A//gAAH//AP/4AAA//4D/+AAAP/+A//gAAD//gP/4AAAf/8D/+AAAD//g//gAAA//4P/4AAAH//D/+AAAB//w//gAAAP/+P/4AAAD//z/+AAAAf/8//gAAAD//v/4AAAA//7/+AAAAP////gAAAB//w==",
+    "width": 56,
+    "height": 88,
+    "aspect": 0.932
+   }
+  },
+  "suits": {
+   "s": {
+    "bits": "AAAACAAAAAAAABgAAAAAAAAYAAAAAAAAHAAAAAAAADwAAAAAAAA8AAAAAAAAPAAAAAAAAD4AAAAAAAB/AAAAAAAA/wAAAAAAAP+AAAAAAAH/gAAAAAAB/8AAAAAAA//gAAAAAAf/4AAAAAAP//AAAAAAH//4AAAAAD///AAAAAA///4AAAAAf///AAAAAP///4AAAAH////AAAAH////4AAAD/////AAAB/////4AAA//////AAAf/////4AAP//////AAH//////4AD///////AB///////4A////////Af///////4H///////+D////////w////////8f////////n////////7////////+/////////////////////////////////////////////////////////////////////+////9////r////f///yf///j///5n///4///+Y///8H//+HH//+A///hw///gH//wcH//gA//wHAf/wAD/wDwD/wAAAAA8AAAAAAAAPAAAAAAAAD4AAAAAAAB+AAAAAAAAfwAAAAAAAP+AAAAAAAH/gAAAAAAD/8AAAAAAA//gAAAAAA//8AAAAAAf//wAAAAA////gAAAA////8AAAA/////8AAP//////+AH///////g",
+    "width": 56,
+    "height": 72,
+    "aspect": 0.7978
+   },
+   "h": {
+    "bits": "AB8AAAB8AAB/4AAD/wAB//gAB//AA//8AA//4Af//AA///AP//8Af//4H///gP///B///4H///4////B///+P///wf///3///+H///9////j////f///9/////////f////////3/////////////////////////////////////////3////////9/////////f////////3////////4////////+P////////h////////wf///////8D///////+A////////gH///////4A///////8AP///////AD///////gAf//////wAD//////8AAf/////+AAH//////gAB//////wAAP/////4AAA/////8AAAP/////AAAD/////gAAAf////wAAAH////8AAAA////+AAAAH////AAAAB////gAAAAP///4AAAAB///+AAAAAP///AAAAAD///gAAAAAf//wAAAAAH//8AAAAAA///AAAAAAH//gAAAAAB//wAAAAAAP/4AAAAAAD/+AAAAAAAf/gAAAAAAD/wAAAAAAA/8AAAAAAAP+AAAAAAAB/AAAAAAAAfwAAAAAAAD8AAAAAAAA/AAAAAAAAHgAAAAAAABwAAAAAAAAcAAAAAAAAHAAAAAAAABgAAAAAAAAIAAAA",
+    "width": 56,
+    "height": 72,
+    "aspect": 0.8706
+   },
+   "d": {
+    "bits": "AAAAEAAAAAAAABgAAAAAAAAcAAAAAAAAPgAAAAAAAH4AAAAAAAB/AAAAAAAA/4AAAAAAAf+AAAAAAAP/wAAAAAAD/8AAAAAAA//gAAAAAA//8AAAAAAP//gAAAAAH//8AAAAAD///gAAAAB///4AAAAA////AAAAAP///4AAAAD///+AAAAD////4AAAB/////AAAA/////wAAAP////+AAAH/////wAAD/////8AAA//////gAAf/////8AAf//////wAP//////8AD///////gB///////4A////////gf///////8P////////D////////7//////////////////3////////8////////+P////////A////////gH///////wB///////4AP//////8AB///////AAP//////gAB//////wAAf/////4AAB/////8AAAf////+AAAD/////gAAA/////wAAAD////4AAAAf///8AAAAH///+AAAAA////gAAAAP///wAAAAB///4AAAAAP//+AAAAAB///AAAAAAP//gAAAAAB//wAAAAAAf/4AAAAAAD/+AAAAAAAf/AAAAAAAH/wAAAAAAA/4AAAAAAAH8AAAAAAAA+AAAAAAAAPAAAAAAAABwAAAAAAAAYAAAA",
+    "width": 56,
+    "height": 72,
+    "aspect": 0.7333
+   },
+   "c": {
+    "bits": "AAAA/wAAAAAAAf/AAAAAAAf/4AAAAAAP//AAAAAAH//4AAAAAD///AAAAAA///wAAAAAP//+AAAAAH///gAAAAD///8AAAAA////AAAAAP///wAAAAD///+AAAAA////gAAAAP///4AAAAD///+AAAAA////gAAAAP///4AAAAD///+AAAAA////AAAAAP///wAAAAD///8AAAAAf///AAAAAH///gAAAHw///4/AAP/v//9/+AH///////wD///////8A////////gf///////8P////////j////////5////////+f////////n////////9/////////f////////////////////////////////////////////////////////////////3////////9/////////f///+////3///9n///4///+Z///+P///mP///h///xj///wf//4cf//4D//8HD//8Af//Bwf//AD//gcD//gA//wPAf/wAD/wD4B/4AAAAA+AAAAAAAAfwAAAAAAAH8AAAAAAAD/AAAAAAAA/4AAAAAAAf+AAAAAAAH/gAAAAAAD/+AAAAAAB//wAAAAAA//+AAAAAAf//gAAAAAf///AAAAA////8AAAA/////wAAB//////gAAf/////8A",
+    "width": 56,
+    "height": 72,
+    "aspect": 1.0112
+   }
+  }
+ }
+}

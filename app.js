@@ -1807,9 +1807,15 @@ const SCENE_CHANGE = 3.2; // average levels of grey
 const ACTIVE_MS = 1500; // keep reading at full speed this long after a change
 const IDLE_FULL_MS = 1200; // and read once in a while even when nothing moves
 
-/* Auto-filling the board is held to a higher bar than offering a card is. */
-const AUTO_MIN_SCORE = 0.7;
-const AUTO_MIN_MARGIN = 0.06;
+/*
+ * What makes auto-filling safe is not a stricter score than the scanner uses -
+ * the reader already refuses anything it cannot tell apart, and a second, made
+ * up threshold on top only hides cards it was sure about. It is that nothing
+ * lands on the board until the same card has been read the same way several
+ * frames running, which a flicker, a passing hand or a coin-flip guess between
+ * two ranks does not survive.
+ */
+const AUTO_STABLE_FRAMES = 4;
 
 const TABLE_MODE_KEY = 'poker-manager:table-mode';
 const WATCH_TIMING_KEY = 'poker-manager:watch-timing';
@@ -1855,6 +1861,11 @@ function watchTiming() {
   return { ...WATCH_DEFAULTS };
 }
 
+/** Table mode puts cards on the board by itself, so it waits for one more. */
+function trackerOptions(table) {
+  return table ? { stableFrames: AUTO_STABLE_FRAMES } : {};
+}
+
 function tableModeWanted() {
   try {
     return localStorage.getItem(TABLE_MODE_KEY) === 'on';
@@ -1895,13 +1906,17 @@ async function openScanner({ table = false } = {}) {
   thumb.width = THUMB_W;
   thumb.height = THUMB_H;
 
+  // Where each card is re-cut from the camera at its own resolution.
+  const detail = document.createElement('canvas');
+
   scanner = {
     video,
     canvas,
     thumb,
+    detail,
     lastThumb: null,
     reader: new CardReader(loadDeck()),
-    tracker: new CardTracker(),
+    tracker: new CardTracker(trackerOptions(table || tableModeWanted())),
     watch: new TableWatch(watchTiming()),
     mode: table || tableModeWanted() ? 'table' : 'manual',
     docked: false,
@@ -1944,7 +1959,9 @@ async function openScanner({ table = false } = {}) {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported');
     stream = await navigator.mediaDevices.getUserMedia({
       // The back camera on a phone; a laptop just gets whatever it has.
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      // As much detail as the phone will give: detection is happy at 960px,
+      // but the index in the corner of a card is only readable at full size.
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false,
     });
   } catch (error) {
@@ -2021,7 +2038,7 @@ function setTableMode(on) {
   if (!scanner) return;
   scanner.mode = on ? 'table' : 'manual';
   rememberTableMode(on);
-  scanner.tracker.reset();
+  scanner.tracker = new CardTracker(trackerOptions(on));
   if (on) {
     adoptOpenHand();
     keepScreenAwake();
@@ -2097,8 +2114,11 @@ function scanFrame(now) {
     const frame = context.getImageData(0, 0, width, height);
     scanner.lastFrame = frame;
     scanner.lastFullRead = now;
-    scanner.detections = scanner.reader.read(frame.data, width, height);
+    scanner.detections = scanner.reader.read(frame.data, width, height, {
+      detail: detailCrop(video, width),
+    });
     scanner.occupied = scanner.detections.length > 0;
+    noteReading(now, width);
     collect(now);
   } else if (scanner.mode === 'table') {
     // Nothing moved, so the last reading still stands - keep the clock running.
@@ -2107,6 +2127,76 @@ function scanFrame(now) {
 
   drawScannerOverlay(context);
   updateStatusLine(now);
+}
+
+/**
+ * Re-cut one card straight from the camera, at the camera's own resolution.
+ *
+ * Detection runs on a frame scaled down to 960px because finding white
+ * rectangles does not need more, but the index in a card's corner might be a
+ * dozen pixels across there and unreadable. Cropping the card out of the video
+ * element instead costs one small draw and gives the reader every pixel the
+ * sensor actually captured.
+ */
+function detailCrop(video, frameWidth) {
+  const scale = video.videoWidth / frameWidth;
+  if (!(scale > 1.05)) return null; // nothing to gain
+
+  return (candidate) => {
+    const quad = candidate.orientations[0];
+    const xs = quad.map((point) => point.x * scale);
+    const ys = quad.map((point) => point.y * scale);
+    const pad = 8;
+    const x0 = Math.max(0, Math.floor(Math.min(...xs)) - pad);
+    const y0 = Math.max(0, Math.floor(Math.min(...ys)) - pad);
+    const x1 = Math.min(video.videoWidth, Math.ceil(Math.max(...xs)) + pad);
+    const y1 = Math.min(video.videoHeight, Math.ceil(Math.max(...ys)) + pad);
+    const width = x1 - x0;
+    const height = y1 - y0;
+    if (width < 16 || height < 16 || width * height > 2.2e6) return null;
+
+    const canvas = scanner.detail;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(video, x0, y0, width, height, 0, 0, width, height);
+    const image = context.getImageData(0, 0, width, height);
+    return {
+      data: image.data,
+      width,
+      height,
+      map: (point) => ({ x: point.x * scale - x0, y: point.y * scale - y0 }),
+    };
+  };
+}
+
+/**
+ * Keep track of what the reader is managing, so the panel can say why nothing
+ * is being read instead of leaving the dealer staring at outlines.
+ */
+function noteReading(now, frameWidth) {
+  const cards = scanner.detections;
+  if (cards.length === 0) return;
+  scanner.sawCardsAt = now;
+  if (cards.some((card) => card.label)) scanner.readCardsAt = now;
+
+  const widths = cards
+    .map((card) => Math.hypot(card.quad[1].x - card.quad[0].x, card.quad[1].y - card.quad[0].y))
+    .sort((a, b) => a - b);
+  scanner.cardWidth = widths[widths.length >> 1] / frameWidth;
+}
+
+/** One line on why cards are being seen but not read, or nothing. */
+function readingTrouble(now) {
+  if (!scanner || scanner.starting || scanner.error) return null;
+  if (now - (scanner.sawCardsAt ?? -Infinity) > 1500) return null;
+  if (now - (scanner.readCardsAt ?? -Infinity) < 2500) return null;
+  if ((scanner.cardWidth ?? 1) < 0.13) {
+    return 'רואה קלפים, אבל הם קטנים מדי בתמונה כדי לקרוא את הפינה. קרב את הטלפון לשולחן.';
+  }
+  return 'רואה קלפים אבל לא מצליח לקרוא אותם. אור אחיד עוזר, ולימוד החפיסה פעם אחת עוזר יותר.';
 }
 
 /** Draw a postage stamp of the frame and compare it with the previous one. */
@@ -2125,10 +2215,7 @@ function collect(now) {
   const stable = scanner.tracker.update(scanner.detections);
 
   if (scanner.mode === 'table') {
-    const sure = stable
-      .filter((card) => card.score >= AUTO_MIN_SCORE && card.margin >= AUTO_MIN_MARGIN)
-      .map((card) => card.label);
-    runWatch(now, scanner.occupied, sure);
+    runWatch(now, scanner.occupied, stable.map((card) => card.label));
     return;
   }
 
@@ -2247,11 +2334,18 @@ function watchStatus(now = performance.now()) {
 
 function updateStatusLine(now) {
   const status = watchStatus(now);
-  if (!status) return;
-  for (const node of document.querySelectorAll('[data-scan-status]')) {
-    if (node.textContent !== status.text) node.textContent = status.text;
-    const dot = node.parentElement?.querySelector('.scan-dot');
-    if (dot) dot.className = `scan-dot is-${status.tone}`;
+  if (status) {
+    for (const node of document.querySelectorAll('[data-scan-status]')) {
+      if (node.textContent !== status.text) node.textContent = status.text;
+      const dot = node.parentElement?.querySelector('.scan-dot');
+      if (dot) dot.className = `scan-dot is-${status.tone}`;
+    }
+  }
+
+  const trouble = readingTrouble(now);
+  for (const node of document.querySelectorAll('[data-scan-trouble]')) {
+    if (trouble && node.textContent !== trouble) node.textContent = trouble;
+    node.hidden = !trouble;
   }
 }
 
@@ -2300,6 +2394,11 @@ function renderCameraPanel() {
   const preview = el('div', 'camera-dock-preview');
   preview.append(scanner.canvas); // the same canvas the loop draws into
   dock.append(preview);
+
+  const trouble = el('p', 'scanner-message');
+  trouble.dataset.scanTrouble = 'dock';
+  trouble.hidden = true;
+  dock.append(trouble);
 
   if (scanner.lastAuto?.labels?.length && scanner.lastAuto.hand === currentHand()?.n) {
     const undo = el('div', 'camera-dock-undo');
@@ -2384,6 +2483,11 @@ function renderScanPanel(body) {
           'וכשהשולחן יתפנה היד תיסגר ותישאל רק שאלה אחת: מי לקח.'
       )
     );
+    const troubleLine = el('p', 'scanner-message');
+    troubleLine.dataset.scanTrouble = 'table';
+    troubleLine.hidden = true;
+    body.append(troubleLine);
+
     const actionsRow = el('div', 'scanner-actions');
     const dock = el('button', 'btn btn-primary btn-lg', 'מזער והמשך לשחק');
     dock.type = 'button';
@@ -2408,6 +2512,11 @@ function renderScanPanel(body) {
         : 'כוון את המצלמה לקלפים. לדיוק גבוה יותר כדאי ללמד את החפיסה שלך פעם אחת.'
     )
   );
+
+  const trouble = el('p', 'scanner-message');
+  trouble.dataset.scanTrouble = 'panel';
+  trouble.hidden = true;
+  body.append(trouble);
 
   const cards = el('div', 'scanner-cards');
   if (scanner.proposal.length === 0) {

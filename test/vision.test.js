@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   CardReader,
@@ -15,9 +16,12 @@ import {
   matchSymbol,
   sceneDifference,
   grayscale,
+  DEFAULTS,
+  RED_SUITS,
+  BLACK_SUITS,
 } from '../src/vision.js';
 
-import { table, tilt, rect, place, renderCard, createImage, fillCircle, fillRect, FELT, WHITE } from './helpers/table.js';
+import { table, tilt, rect, place, renderCard, createImage, fillCircle, fillRect, downscale, blur, FELT, WHITE } from './helpers/table.js';
 
 const BOARD = [
   ['A', 's'],
@@ -116,6 +120,28 @@ test('an empty table reads as nothing at all', () => {
   assert.deepEqual(read(createImage(700, 500, FELT)), []);
 });
 
+test('a card too small to read in the frame is read from a sharper crop', () => {
+  // A phone across the table: the card is a tenth of the frame, and once the
+  // frame is scaled down for detection the index is a handful of pixels.
+  const sharp = blur(table([['Q', 'h']], { width: 1600, height: 1000, cardW: 200, y: 300 }), 2);
+  const small = downscale(sharp, 8);
+  const reader = new CardReader(templates());
+
+  const blind = reader.read(small.data, small.width, small.height);
+  assert.equal(blind.length, 1, 'the card is still found');
+  assert.equal(blind[0].label, null, 'but there is nothing left to read');
+
+  const detailed = reader.read(small.data, small.width, small.height, {
+    detail: () => ({
+      data: sharp.data,
+      width: sharp.width,
+      height: sharp.height,
+      map: (point) => ({ x: point.x * 8, y: point.y * 8 }),
+    }),
+  });
+  assert.deepEqual(labels(detailed), ['Qh'], 'the same card, read from the full-size crop');
+});
+
 /* ----------------------------------------------------- refusing to guess */
 
 test('round and square bright things are not cards', () => {
@@ -163,6 +189,52 @@ test('matchSymbol reports how far ahead the winner was', () => {
   assert.equal(result.label, 'same');
   assert.equal(result.score, 1);
   assert.equal(result.margin, 1);
+});
+
+/* ------------------------------------------------------------ a real deck */
+
+/**
+ * Drawn cards are drawn by the same hand that reads them, which is a soft test.
+ * This fixture is the corner of two cards photographed on a real table with a
+ * phone, next to the templates the app makes for itself when nobody has taught
+ * it the deck - the exact situation a first-time user is in.
+ */
+function realDeck() {
+  const raw = JSON.parse(readFileSync(new URL('./fixtures/real-deck.json', import.meta.url), 'utf8'));
+  const unpack = (s) => ({
+    bits: unpackBits(s.bits, s.width * s.height),
+    width: s.width,
+    height: s.height,
+    aspect: s.aspect,
+  });
+  const templates = { ranks: {}, suits: {} };
+  for (const kind of ['ranks', 'suits']) {
+    for (const [label, t] of Object.entries(raw.templates[kind])) templates[kind][label] = unpack(t);
+  }
+  return {
+    templates,
+    cards: raw.cards.map((card) => ({ ...card, rank: unpack(card.rank), suit: unpack(card.suit) })),
+  };
+}
+
+test('a real deck reads correctly with the templates the app ships', () => {
+  const { templates, cards } = realDeck();
+  assert.equal(cards.length, 2);
+  for (const card of cards) {
+    const rank = matchSymbol(card.rank, templates.ranks);
+    const suit = matchSymbol(card.suit, templates.suits, card.red ? RED_SUITS : BLACK_SUITS);
+    assert.equal(`${rank.label}${suit.label}`, card.label);
+    for (const [what, result] of [['rank', rank], ['suit', suit]]) {
+      assert.ok(
+        result.score >= DEFAULTS.minScore,
+        `${card.label} ${what} scored ${result.score.toFixed(3)}, under the ${DEFAULTS.minScore} it needs to be reported`
+      );
+      assert.ok(
+        result.margin >= DEFAULTS.minMargin,
+        `${card.label} ${what} beat the runner-up by only ${result.margin.toFixed(3)}`
+      );
+    }
+  }
 });
 
 /* ------------------------------------------------------------- steadiness */

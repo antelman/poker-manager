@@ -25,12 +25,17 @@ export const CARD_W = 200;
 export const CARD_H = 300;
 
 /**
- * The corner index on the canonical card. Inset slightly so the printed border
- * stays out, and generous enough vertically that a deck with a low or oversized
- * index does not get its suit clipped - a half-cut spade reads as a club.
+ * Where to look for the corner index: a generous window, inset enough to keep
+ * the printed border out. Nothing is assumed about where inside it the index
+ * sits - decks differ far too much for that - so the window is deliberately
+ * bigger than any index and `symbolsFromCorner` finds the index inside it.
  */
-const CORNER = { x: 3, y: 4, w: 38, h: 104 };
-const CORNER_SCALE = 3;
+const CORNER = { x: 2, y: 3, w: 54, h: 94 };
+const CORNER_SCALE = 4;
+/** An index is never wider than this fraction of the card. */
+const INDEX_MAX_W = 26;
+/** How much darker than the paper around it a pixel has to be to count as ink. */
+const INK_OFFSET = 14;
 
 /** Normalised template sizes. Small enough to keep in localStorage. */
 export const RANK_W = 56;
@@ -42,6 +47,24 @@ export const CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J
 export const CARD_SUITS = ['s', 'h', 'd', 'c'];
 export const RED_SUITS = ['h', 'd'];
 export const BLACK_SUITS = ['s', 'c'];
+
+/**
+ * How the three views of "the same shape" are weighed against each other:
+ * pixels agreeing, ink overlapping, and outlines being near each other.
+ */
+export const WEIGHTS = {
+  // A rank has to survive a deck printing its 8 in a typeface nobody taught the
+  // app, so how near the outlines are carries it. A suit only ever has to tell
+  // a spade from a club, which are the same shape until you look at exactly
+  // where the ink is, so overlap counts for more there.
+  //
+  // Both settings were picked by sweeping them over three sets at once: the
+  // drawn tables in the tests, a frame of printed cards, and a photograph of a
+  // real deck on a real table. This is the middle of the region that reads
+  // every card in all three and misreads none.
+  rank: { agreement: 0, overlap: 0.4, shape: 0.6 },
+  suit: { agreement: 0.2, overlap: 0.4, shape: 0.4 },
+};
 
 export const DEFAULTS = {
   /** Blob sizes worth looking at, as a fraction of the frame. */
@@ -55,9 +78,14 @@ export const DEFAULTS = {
   /** Tiles used for the local threshold; more tiles survive harder shadows. */
   tilesX: 4,
   tilesY: 3,
-  /** How sure a reading has to be, and by how much it has to beat the runner-up. */
-  minScore: 0.62,
-  minMargin: 0.04,
+  /**
+   * How sure a reading has to be, and by how much it has to beat the runner-up.
+   * Calibrated over the drawn tables the tests use and a photograph of a real
+   * deck on a real table: of the settings tried, this sits in the middle of the
+   * range that reads every card in both and misreads none in either.
+   */
+  minScore: 0.6,
+  minMargin: 0.025,
   /** Frames a card must read the same way before it is reported. */
   stableFrames: 3,
   history: 6,
@@ -558,85 +586,275 @@ export function symbolFromInk(mask, width, height, outW, outH) {
 }
 
 /**
- * Where the rank ends and the suit begins: the widest blank band between them.
+ * Ink, found against the paper immediately around it rather than against the
+ * whole corner at once.
  *
- * Decks put their index at different heights and sizes, so a fixed fraction
- * cuts one deck's suit in half. The gap of untouched paper between the two
- * symbols is the one landmark every deck shares.
+ * A card is never lit evenly: one end catches the lamp, the other sits in the
+ * shadow of the phone. Worse, the index is often a thin, light glyph while the
+ * artwork beside it is heavy and dark, so one cut-off for the whole corner
+ * keeps the artwork and loses the index - which is exactly the wrong half.
+ *
+ * The price is that a heavy, solid glyph darkens its own surroundings and comes
+ * out hollow, which is why `symbolsFromCorner` reads the corner both ways and
+ * lets the matcher say which reading it believes.
  */
-function splitRow(ink, width, height) {
-  const rowInk = new Int32Array(height);
+function localInk(gray, width, height, radius, offset) {
+
+  // Summed-area table, so a box mean is four lookups whatever the radius.
+  const sums = new Float64Array((width + 1) * (height + 1));
   for (let y = 0; y < height; y++) {
-    let count = 0;
-    for (let x = 0; x < width; x++) count += ink[y * width + x];
-    rowInk[y] = count;
+    let row = 0;
+    for (let x = 0; x < width; x++) {
+      row += gray[y * width + x];
+      sums[(y + 1) * (width + 1) + x + 1] = sums[y * (width + 1) + x + 1] + row;
+    }
   }
 
-  // Only the paper between the two symbols counts; the blank below the suit is
-  // usually the widest gap in the window and would swallow the suit whole.
-  let first = -1;
-  let last = -1;
+  const ink = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
-    if (rowInk[y] === 0) continue;
-    if (first < 0) first = y;
-    last = y;
-  }
-  if (first < 0 || last - first < 4) return Math.round(height * 0.5);
-
-  let bestStart = -1;
-  let bestLength = 0;
-  let runStart = -1;
-  for (let y = first; y <= last; y++) {
-    if (rowInk[y] === 0) {
-      if (runStart < 0) runStart = y;
-      continue;
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(height - 1, y + radius);
+    for (let x = 0; x < width; x++) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(width - 1, x + radius);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const box =
+        sums[(y1 + 1) * (width + 1) + x1 + 1] -
+        sums[y0 * (width + 1) + x1 + 1] -
+        sums[(y1 + 1) * (width + 1) + x0] +
+        sums[y0 * (width + 1) + x0];
+      if (gray[y * width + x] < box / area - offset) ink[y * width + x] = 1;
     }
-    if (runStart >= 0 && y - runStart > bestLength) {
-      bestLength = y - runStart;
-      bestStart = runStart;
-    }
-    runStart = -1;
   }
-  if (bestStart < 0 || bestLength < 2) return Math.round(height * 0.5);
-  return bestStart + Math.floor(bestLength / 2);
+  return ink;
 }
 
 /**
- * Split an unwarped corner into its rank and its suit, and decide whether the
- * ink is red. Colour is the one cue a camera reads perfectly, and knowing red
- * from black halves the suits a shape has to be matched against.
+ * Clear ink that runs off the card's own edge.
+ *
+ * Real cards have rounded corners and the detector fits a sharp-cornered quad
+ * to their straight edges, so the extreme corner of an unwarped card is always
+ * a wedge of whatever the card is lying on - plus, often, the shadow along the
+ * edge. Left in, that wedge is the biggest, top-leftmost blob in the window and
+ * gets read as the rank: a nine of clubs comes out as a black triangle.
+ *
+ * Anything connected to the top or left edge of the window is that, and never
+ * the index, which always has white card stock around it.
  */
-export function symbolsFromCorner(patch) {
-  const { gray, red, width, height } = patch;
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
-  const threshold = otsuThreshold(hist, gray.length);
-  if (threshold < 0) return null;
+function clearEdgeInk(ink, width, height) {
+  const stack = [];
+  for (let x = 0; x < width; x++) if (ink[x]) stack.push(x);
+  for (let y = 1; y < height; y++) if (ink[y * width]) stack.push(y * width);
 
-  const ink = new Uint8Array(gray.length);
-  let redSum = 0;
+  while (stack.length > 0) {
+    const index = stack.pop();
+    if (!ink[index]) continue;
+    ink[index] = 0;
+    const y = (index / width) | 0;
+    const x = index - y * width;
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= height) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= width) continue;
+        const next = ny * width + nx;
+        if (ink[next]) stack.push(next);
+      }
+    }
+  }
+}
+
+/**
+ * Runs of consecutive non-empty entries in a profile, merging gaps smaller than
+ * `minGap` - blur and low resolution break a single glyph into pieces, and
+ * those pieces belong together.
+ */
+function inkRuns(profile, minGap) {
+  const runs = [];
+  let start = -1;
+  let blank = 0;
+  for (let i = 0; i < profile.length; i++) {
+    if (profile[i] > 0) {
+      if (start < 0) start = i;
+      blank = 0;
+      continue;
+    }
+    if (start < 0) continue;
+    blank++;
+    if (blank > minGap) {
+      runs.push([start, i - blank]);
+      start = -1;
+      blank = 0;
+    }
+  }
+  if (start >= 0) runs.push([start, profile.length - 1]);
+  return runs;
+}
+
+/**
+ * Find the rank and the suit in an unwarped corner, and decide whether the ink
+ * is red.
+ *
+ * The index is printed as a narrow column hugging the corner, and the card's
+ * own artwork - pips, or a court card's picture - starts further in, with a
+ * band of blank card stock between them. So the first column of ink is the
+ * index, whatever size the deck prints it at, and inside that column the first
+ * two rows of ink are the rank and its suit. Guessing at fixed proportions
+ * instead is what makes a nine of clubs read as nothing at all: on many decks
+ * a fixed window swallows the first pip and matches that.
+ *
+ * Colour is taken from the suit alone - it is the one cue a camera reads
+ * perfectly, and knowing red from black halves the suits to compare against.
+ */
+export function symbolsFromCorner(patch, { local = false } = {}) {
+  const { gray, red, width, height } = patch;
+
+  let ink;
+  if (local) {
+    // A window a bit wider than an index glyph: big enough to sit on paper,
+    // small enough not to average in the shadow at the far end of the card.
+    ink = localInk(gray, width, height, Math.max(3, Math.round(width * 0.22)), INK_OFFSET);
+  } else {
+    const hist = new Uint32Array(gray.length && 256);
+    for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+    const threshold = otsuThreshold(hist, gray.length);
+    if (threshold < 0) return null;
+    ink = new Uint8Array(gray.length);
+    for (let i = 0; i < gray.length; i++) ink[i] = gray[i] < threshold ? 1 : 0;
+  }
+  clearEdgeInk(ink, width, height);
+
+  const columns = new Int32Array(width);
   let inkCount = 0;
-  for (let i = 0; i < gray.length; i++) {
-    if (gray[i] < threshold) {
-      ink[i] = 1;
-      redSum += red[i];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!ink[y * width + x]) continue;
+      columns[x]++;
       inkCount++;
     }
   }
   if (inkCount < 20) return null;
 
-  const split = splitRow(ink, width, height);
-  const rankMask = ink.subarray(0, split * width);
-  const suitMask = ink.subarray(split * width);
+  // Pixels per canonical card unit, so every threshold below is in card
+  // proportions rather than in whatever the camera happened to give.
+  const unit = width / CORNER.w;
+  const gap = Math.max(2, Math.round(unit * 1.2));
+
+  const strips = inkRuns(columns, gap).filter(([a, b]) => b - a >= unit);
+  if (strips.length === 0) return null;
+  const x0 = strips[0][0];
+  const x1 = Math.min(strips[0][1], x0 + Math.round(INDEX_MAX_W * unit));
+  if (x1 - x0 < unit) return null;
+
+  const rows = new Int32Array(height);
+  for (let y = 0; y < height; y++) {
+    let count = 0;
+    for (let x = x0; x <= x1; x++) count += ink[y * width + x];
+    rows[y] = count;
+  }
+  const bands = inkRuns(rows, gap).filter(([a, b]) => b - a >= unit * 0.8);
+  if (bands.length < 2) return null;
+
+  const [rankBand, suitBand] = bands;
+  const rankHeight = rankBand[1] - rankBand[0];
+  // The suit is printed right under the rank. Anything further down is the
+  // card's own artwork, and reading that as a suit is worse than reading none.
+  if (suitBand[0] - rankBand[1] > rankHeight * 1.6 + unit * 3) return null;
+
+  const crop = (band) => {
+    const w = x1 - x0 + 1;
+    const h = band[1] - band[0] + 1;
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) mask[y * w + x] = ink[(band[0] + y) * width + x0 + x];
+    }
+    return { mask, w, h };
+  };
+
+  const rankCrop = crop(rankBand);
+  const suitCrop = crop(suitBand);
+
+  let redSum = 0;
+  let redCount = 0;
+  for (let y = suitBand[0]; y <= suitBand[1]; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = y * width + x;
+      if (!ink[i]) continue;
+      redSum += red[i];
+      redCount++;
+    }
+  }
 
   return {
-    rank: symbolFromInk(rankMask, width, split, RANK_W, RANK_H),
-    suit: symbolFromInk(suitMask, width, height - split, SUIT_W, SUIT_H),
-    red: redSum / inkCount > 28,
+    rank: symbolFromInk(rankCrop.mask, rankCrop.w, rankCrop.h, RANK_W, RANK_H),
+    suit: symbolFromInk(suitCrop.mask, suitCrop.w, suitCrop.h, SUIT_W, SUIT_H),
+    red: redCount > 0 && redSum / redCount > 28,
   };
 }
 
 /* ---------------------------------------------------------------- matching */
+
+/**
+ * Distance from every pixel to the nearest ink, two passes, chessboard-ish.
+ *
+ * Comparing two bitmaps pixel by pixel asks them to line up exactly, which two
+ * printings of the same rank never do - one deck's 8 is a little rounder, a
+ * camera softens the strokes, and a shape that is right but a pixel off scores
+ * no better than a shape that is wrong. Measuring how far each mark is from the
+ * nearest mark in the other image asks the gentler question: is this roughly
+ * the same shape.
+ */
+export function distanceTransform(bits, width, height) {
+  const far = width + height;
+  const out = new Float32Array(width * height);
+  for (let i = 0; i < out.length; i++) out[i] = bits[i] ? 0 : far;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (x > 0) out[i] = Math.min(out[i], out[i - 1] + 1);
+      if (y > 0) out[i] = Math.min(out[i], out[i - width] + 1);
+      if (x > 0 && y > 0) out[i] = Math.min(out[i], out[i - width - 1] + 1.4);
+      if (x < width - 1 && y > 0) out[i] = Math.min(out[i], out[i - width + 1] + 1.4);
+    }
+  }
+  for (let y = height - 1; y >= 0; y--) {
+    for (let x = width - 1; x >= 0; x--) {
+      const i = y * width + x;
+      if (x < width - 1) out[i] = Math.min(out[i], out[i + 1] + 1);
+      if (y < height - 1) out[i] = Math.min(out[i], out[i + width] + 1);
+      if (x < width - 1 && y < height - 1) out[i] = Math.min(out[i], out[i + width + 1] + 1.4);
+      if (x > 0 && y < height - 1) out[i] = Math.min(out[i], out[i + width - 1] + 1.4);
+    }
+  }
+  return out;
+}
+
+/** How close two bitmaps are in shape, 0..1, forgiving of a pixel or two. */
+function shapeAgreement(symbol, symbolDistance, template) {
+  if (!template.distance) {
+    template.distance = distanceTransform(template.bits, template.width, template.height);
+  }
+  let fromSymbol = 0;
+  let symbolInk = 0;
+  let fromTemplate = 0;
+  let templateInk = 0;
+  for (let i = 0; i < symbol.bits.length; i++) {
+    if (symbol.bits[i]) {
+      fromSymbol += template.distance[i];
+      symbolInk++;
+    }
+    if (template.bits[i]) {
+      fromTemplate += symbolDistance[i];
+      templateInk++;
+    }
+  }
+  if (symbolInk === 0 || templateInk === 0) return 0;
+  const mean = 0.5 * (fromSymbol / symbolInk + fromTemplate / templateInk);
+  const scale = 0.16 * Math.hypot(symbol.width, symbol.height);
+  return Math.max(0, 1 - mean / scale);
+}
 
 /**
  * Compare a symbol against a set of templates.
@@ -645,11 +863,12 @@ export function symbolsFromCorner(patch) {
  * next best by a hair is a coin toss, and this returns the margin so the
  * caller can refuse to guess.
  */
-export function matchSymbol(symbol, templates, allowed) {
+export function matchSymbol(symbol, templates, allowed, weights = WEIGHTS.rank) {
   if (!symbol) return { label: null, score: 0, margin: 0 };
 
   let best = { label: null, score: -1 };
   let second = -1;
+  const symbolDistance = distanceTransform(symbol.bits, symbol.width, symbol.height);
   for (const [label, template] of Object.entries(templates)) {
     if (allowed && !allowed.includes(label)) continue;
     if (!template || template.bits.length !== symbol.bits.length) continue;
@@ -670,7 +889,11 @@ export function matchSymbol(symbol, templates, allowed) {
     }
     const agreement = same / symbol.bits.length;
     const overlap = union > 0 ? intersection / union : 0;
-    let score = 0.4 * agreement + 0.6 * overlap;
+    const shape = shapeAgreement(symbol, symbolDistance, template);
+    // Overlap is strict about where the ink is, shape is forgiving about it.
+    // Alone, the first refuses a deck it was not taught and the second cannot
+    // tell a spade from a club; together they do both.
+    let score = weights.agreement * agreement + weights.overlap * overlap + weights.shape * shape;
 
     // Normalising into a fixed box throws away how wide the symbol was, and
     // that is the whole difference between a "10" and a "1"-shaped glyph.
@@ -716,6 +939,10 @@ export class CardReader {
   constructor(templates, options = {}) {
     this.templates = templates;
     this.options = { ...DEFAULTS, ...options };
+    this.weights = {
+      rank: { ...WEIGHTS.rank, ...(options.weights?.rank || {}) },
+      suit: { ...WEIGHTS.suit, ...(options.weights?.suit || {}) },
+    };
     this.buffers = {};
   }
 
@@ -776,13 +1003,30 @@ export class CardReader {
       upright
     );
     if (!h) return null;
-    return symbolsFromCorner(warpPatch(rgba, width, height, h, CORNER, CORNER_SCALE));
+    const patch = warpPatch(rgba, width, height, h, CORNER, CORNER_SCALE);
+    const crisp = symbolsFromCorner(patch);
+    if (crisp?.rank && crisp?.suit) return crisp;
+    return symbolsFromCorner(patch, { local: true }) || crisp;
   }
 
-  /** Read the frame: card outlines, plus a name for the ones it is sure of. */
-  read(rgba, width, height) {
+  /**
+   * Read the frame: card outlines, plus a name for the ones it is sure of.
+   *
+   * `options.detail` may hand back a sharper crop around a card than the frame
+   * the quads were found in - finding a white rectangle needs far fewer pixels
+   * than reading the little index printed in its corner, and downscaling the
+   * whole frame to the size detection needs throws away exactly the detail the
+   * reading depends on. It is given the card's corners and returns
+   * `{ data, width, height, map }`, where `map` puts a point from the frame
+   * into the crop.
+   */
+  read(rgba, width, height, options = {}) {
     const cards = [];
     for (const candidate of this.quads(rgba, width, height)) {
+      const detail = options.detail ? options.detail(candidate) : null;
+      const source = detail
+        ? { data: detail.data, width: detail.width, height: detail.height, map: detail.map }
+        : { data: rgba, width, height, map: (point) => point };
       let best = null;
       // A card lying on the table can be the right way up or upside down; the
       // index reads as noise in the wrong one, so try both and keep the winner.
@@ -793,16 +1037,27 @@ export class CardReader {
           { x: CARD_W, y: CARD_H },
           { x: 0, y: CARD_H },
         ];
-        const h = homography(canonical, corners);
+        const h = homography(canonical, corners.map(source.map));
         if (!h) continue;
-        const patch = warpPatch(rgba, width, height, h, CORNER, CORNER_SCALE);
-        const symbols = symbolsFromCorner(patch);
-        if (!symbols) continue;
+        const patch = warpPatch(source.data, source.width, source.height, h, CORNER, CORNER_SCALE);
+        // Two ways of telling ink from paper, and the matcher arbitrates: one
+        // suits crisp print under even light, the other a light index next to
+        // heavy artwork. Neither wins everywhere, and guessing wrong costs a
+        // card, so both are tried.
+        for (const local of [false, true]) {
+          const symbols = symbolsFromCorner(patch, { local });
+          if (!symbols) continue;
 
-        const rank = matchSymbol(symbols.rank, this.templates.ranks);
-        const suit = matchSymbol(symbols.suit, this.templates.suits, symbols.red ? RED_SUITS : BLACK_SUITS);
-        const reading = detection(corners, rank, suit, symbols.red);
-        if (!best || reading.score > best.score) best = reading;
+          const rank = matchSymbol(symbols.rank, this.templates.ranks, null, this.weights.rank);
+          const suit = matchSymbol(
+            symbols.suit,
+            this.templates.suits,
+            symbols.red ? RED_SUITS : BLACK_SUITS,
+            this.weights.suit
+          );
+          const reading = detection(corners, rank, suit, symbols.red);
+          if (!best || reading.score > best.score) best = reading;
+        }
       }
       if (!best) {
         best = detection(candidate.orientations[0], { label: null, score: 0, margin: 0 }, { label: null, score: 0, margin: 0 }, false);
