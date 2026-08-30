@@ -1469,3 +1469,85 @@ body.is-scanning { overflow: hidden; }
 @media (min-width: 700px) {
   .scanner-body { max-width: 640px; margin: 0 auto; width: 100%; border-radius: var(--r-lg) var(--r-lg) 0 0; }
 }
+
+/* ---- the camera dock: the strip on the felt while the camera runs ---- */
+
+.camera-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--surface-sunken);
+}
+
+.camera-dock-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.camera-dock-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .9rem;
+  color: var(--text-dim);
+}
+
+.scan-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.scan-dot.is-live { background: var(--win); box-shadow: 0 0 0 3px color-mix(in srgb, var(--win) 22%, transparent); }
+.scan-dot.is-warn { background: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow); }
+.scan-dot.is-bad { background: var(--lose); }
+
+.camera-dock-preview {
+  display: flex;
+  justify-content: center;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #0a1410;
+}
+
+.camera-dock-preview canvas { width: 100%; height: 120px; object-fit: cover; }
+
+.camera-dock-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .9rem;
+  color: var(--text-dim);
+}
+
+.camera-dock-undo .btn { min-height: 36px; padding: 4px 12px; }
+.camera-dock-actions { display: flex; gap: 8px; }
+.camera-dock-actions .btn { flex: 1 1 0; min-height: 40px; }
+
+.scanner-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .95rem;
+  color: var(--text);
+}
+
+.scanner-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: .92rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.scanner-toggle input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: var(--brass);
+  margin-top: 1px;
+}

@@ -109,13 +109,14 @@ function assertNothingMissing(appSource, bundled) {
 }
 
 async function build() {
-  const [html, css, engine, store, sync, vision, deck, app] = await Promise.all([
+  const [html, css, engine, store, sync, vision, watch, deck, app] = await Promise.all([
     read('index.html'),
     read('styles.css'),
     read('src/engine.js'),
     read('src/store.js'),
     read('src/sync.js'),
     read('src/vision.js'),
+    read('src/table-watch.js'),
     read('src/deck.js'),
     read('app.js'),
   ]);
@@ -125,6 +126,7 @@ async function build() {
     ['src/store.js', stripModuleSyntax(store)],
     ['src/sync.js', stripModuleSyntax(sync)],
     ['src/vision.js', stripModuleSyntax(vision)],
+    ['src/table-watch.js', stripModuleSyntax(watch)],
     ['src/deck.js', stripModuleSyntax(deck)],
     ['app.js', stripModuleSyntax(stripServiceWorker(app))],
   ];

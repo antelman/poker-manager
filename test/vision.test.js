@@ -13,6 +13,8 @@ import {
   packBits,
   unpackBits,
   matchSymbol,
+  sceneDifference,
+  grayscale,
 } from '../src/vision.js';
 
 import { table, tilt, rect, place, renderCard, createImage, fillCircle, fillRect, FELT, WHITE } from './helpers/table.js';
@@ -199,6 +201,15 @@ test('templates survive a trip through storage', () => {
   for (let i = 0; i < bits.length; i += 3) bits[i] = 1;
   const restored = unpackBits(packBits(bits), bits.length);
   assert.deepEqual([...restored], [...bits]);
+});
+
+test('a still table reads as no change, a moved card as a big one', () => {
+  const still = table(BOARD.slice(0, 3));
+  const moved = table(BOARD.slice(0, 3), { y: 220 });
+  const gray = (image) => grayscale(image.data, image.width, image.height);
+  assert.equal(sceneDifference(gray(still), gray(still)), 0);
+  assert.ok(sceneDifference(gray(still), gray(moved)) > 5);
+  assert.equal(sceneDifference(gray(still), new Uint8ClampedArray(4)), 255, 'mismatched sizes are a change');
 });
 
 test('resizing a bitmap keeps its shape', () => {

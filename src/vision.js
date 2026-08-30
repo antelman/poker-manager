@@ -904,6 +904,22 @@ export class CardTracker {
   }
 }
 
+/* ------------------------------------------------------------ frame change */
+
+/**
+ * How much two greyscale thumbnails differ, in average levels of grey.
+ *
+ * A camera left running over a table spends most of the evening looking at
+ * nothing happening. Comparing two postage stamps costs microseconds and says
+ * whether the expensive read is worth doing at all.
+ */
+export function sceneDifference(a, b) {
+  if (!a || !b || a.length !== b.length || a.length === 0) return 255;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+}
+
 /* ----------------------------------------------------------------- storage */
 
 /** Pack a 0/1 bitmap into base64, small enough to keep in localStorage. */
