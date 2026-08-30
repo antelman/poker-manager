@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/poker-game-manager-2mppp0]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
