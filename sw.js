@@ -24,6 +24,8 @@ const SHELL = [
   'fonts/assistant-latin.woff2',
   'fonts/frank-ruhl-libre-hebrew.woff2',
   'fonts/frank-ruhl-libre-latin.woff2',
+  'fonts/suez-one-hebrew.woff2',
+  'fonts/suez-one-latin.woff2',
   'icons/icon-192.png',
   'icons/icon-512.png',
 ];
