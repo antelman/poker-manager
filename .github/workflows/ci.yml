@@ -21,7 +21,7 @@ jobs:
       - name: Check the static site is complete
         run: |
           for file in index.html styles.css app.js sw.js manifest.webmanifest \
-                      src/engine.js src/store.js src/vision.js src/table-watch.js src/deck.js \
+                      src/engine.js src/store.js src/vision.js src/table-watch.js src/deck.js src/known-deck.js \
                       icons/icon-192.png icons/icon-512.png icons/icon-maskable-512.png \
                       fonts/assistant-hebrew.woff2 fonts/assistant-latin.woff2 \
                       fonts/frank-ruhl-libre-hebrew.woff2 fonts/frank-ruhl-libre-latin.woff2 \
@@ -33,6 +33,7 @@ jobs:
           node --check src/vision.js
           node --check src/table-watch.js
           node --check src/deck.js
+          node --check src/known-deck.js
           node --check sw.js
           node --check scripts/serve.js
 

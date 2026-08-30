@@ -62,17 +62,23 @@ export const WEIGHTS = {
   // drawn tables in the tests, a frame of printed cards, and a photograph of a
   // real deck on a real table. This is the middle of the region that reads
   // every card in all three and misreads none.
-  rank: { agreement: 0, overlap: 0.4, shape: 0.6 },
-  suit: { agreement: 0.2, overlap: 0.4, shape: 0.4 },
+  rank: { agreement: 0.4, overlap: 0.2, shape: 0.4 },
+  suit: { agreement: 0.5, overlap: 0.3, shape: 0.2 },
 };
 
 export const DEFAULTS = {
   /** Blob sizes worth looking at, as a fraction of the frame. */
-  minAreaFrac: 0.004,
+  minAreaFrac: 0.0025,
   maxAreaFrac: 0.35,
-  /** How square-on a blob has to be to count as a card. */
-  minSolidity: 0.86,
-  maxHullError: 0.035,
+  /**
+   * How much of its own quad a blob has to fill, and how far its outline may
+   * wander from that quad. Both are set against real cards rather than drawn
+   * ones: a real card has rounded corners, which cost about 0.05 of hull error
+   * on their own, and court cards are half artwork, so a printed king fills
+   * less of its outline than a drawn one does.
+   */
+  minSolidity: 0.8,
+  maxHullError: 0.09,
   minAspect: 1.15,
   maxAspect: 2.35,
   /** Tiles used for the local threshold; more tiles survive harder shadows. */
@@ -80,11 +86,14 @@ export const DEFAULTS = {
   tilesY: 3,
   /**
    * How sure a reading has to be, and by how much it has to beat the runner-up.
-   * Calibrated over the drawn tables the tests use and a photograph of a real
-   * deck on a real table: of the settings tried, this sits in the middle of the
-   * range that reads every card in both and misreads none in either.
+   * Swept over five sets at once - the drawn tables, a frame of printed cards,
+   * and three photographs of two real decks on real tables - and set to the
+   * most that can be read without ever misreading anything in any of them. It
+   * is deliberately on the strict side: an untaught deck whose index is printed
+   * in a face the app has never seen will go unread rather than be guessed at,
+   * and the way out of that is to teach it the deck.
    */
-  minScore: 0.6,
+  minScore: 0.68,
   minMargin: 0.025,
   /** Frames a card must read the same way before it is reported. */
   stableFrames: 3,
@@ -257,11 +266,15 @@ export function components(mask, width, height, options = {}, scratch = null) {
     if (area >= minArea && area <= maxArea) {
       const keepMin = new Int32Array(height).fill(width);
       const keepMax = new Int32Array(height).fill(-1);
+      // The area inside the outline, holes included. A court card is a third
+      // artwork, so the lit pixels alone say a king is barely a shape at all.
+      let spanArea = 0;
       for (let y = minY; y <= maxY; y++) {
         keepMin[y] = rowMin[y];
         keepMax[y] = rowMax[y];
+        if (rowMax[y] >= 0) spanArea += rowMax[y] - rowMin[y] + 1;
       }
-      found.push({ area, minX, maxX, minY, maxY, rowMin: keepMin, rowMax: keepMax });
+      found.push({ area, spanArea, minX, maxX, minY, maxY, rowMin: keepMin, rowMax: keepMax });
     }
     for (let y = minY; y <= maxY; y++) {
       rowMin[y] = width;
@@ -666,6 +679,30 @@ function clearEdgeInk(ink, width, height) {
 }
 
 /**
+ * Drop the rules a deck prints around its artwork.
+ *
+ * Many decks draw a thin frame just inside the card edge. It runs the whole
+ * height of the corner window, a couple of pixels wide, and it sits close
+ * enough to the index to be read as part of it - which turns a king and its
+ * frame into one shape that matches nothing. No printed rank or suit is a line
+ * that long and that thin, so those come out first.
+ */
+function clearPrintedRules(ink, width, height) {
+  const longEnough = 0.65;
+  const thinEnough = 0.18;
+  for (const blob of components(ink, width, height, { minAreaFrac: 0, maxAreaFrac: 1 })) {
+    const blobWidth = blob.maxX - blob.minX + 1;
+    const blobHeight = blob.maxY - blob.minY + 1;
+    const vertical = blobHeight >= height * longEnough && blobWidth <= width * thinEnough;
+    const horizontal = blobWidth >= width * longEnough && blobHeight <= height * thinEnough;
+    if (!vertical && !horizontal) continue;
+    for (let y = blob.minY; y <= blob.maxY; y++) {
+      for (let x = blob.rowMin[y]; x <= blob.rowMax[y]; x++) ink[y * width + x] = 0;
+    }
+  }
+}
+
+/**
  * Runs of consecutive non-empty entries in a profile, merging gaps smaller than
  * `minGap` - blur and low resolution break a single glyph into pieces, and
  * those pieces belong together.
@@ -724,6 +761,7 @@ export function symbolsFromCorner(patch, { local = false } = {}) {
     for (let i = 0; i < gray.length; i++) ink[i] = gray[i] < threshold ? 1 : 0;
   }
   clearEdgeInk(ink, width, height);
+  clearPrintedRules(ink, width, height);
 
   const columns = new Int32Array(width);
   let inkCount = 0;
@@ -739,28 +777,46 @@ export function symbolsFromCorner(patch, { local = false } = {}) {
   // Pixels per canonical card unit, so every threshold below is in card
   // proportions rather than in whatever the camera happened to give.
   const unit = width / CORNER.w;
-  const gap = Math.max(2, Math.round(unit * 1.2));
 
-  const strips = inkRuns(columns, gap).filter(([a, b]) => b - a >= unit);
-  if (strips.length === 0) return null;
-  const x0 = strips[0][0];
-  const x1 = Math.min(strips[0][1], x0 + Math.round(INDEX_MAX_W * unit));
-  if (x1 - x0 < unit) return null;
+  // How wide a blank gap has to be before it separates two things rather than
+  // dividing one. There is no single right answer: blur closes the gap inside a
+  // "10", and a deck that prints its frame close to the index leaves barely two
+  // pixels between them. So the tightest reading is tried first, and the first
+  // one that yields an index - two rows of ink, the second sitting just under
+  // the first - is the one taken.
+  let strip = null;
+  let bands = null;
+  for (const gap of [1, 2, Math.round(unit * 0.8), Math.round(unit * 1.6)]) {
+    const strips = inkRuns(columns, gap).filter(([a, b]) => b - a >= unit);
+    for (const candidate of strips.slice(0, 2)) {
+      const x0 = candidate[0];
+      const x1 = Math.min(candidate[1], x0 + Math.round(INDEX_MAX_W * unit));
+      if (x1 - x0 < unit) continue;
 
-  const rows = new Int32Array(height);
-  for (let y = 0; y < height; y++) {
-    let count = 0;
-    for (let x = x0; x <= x1; x++) count += ink[y * width + x];
-    rows[y] = count;
+      const rows = new Int32Array(height);
+      for (let y = 0; y < height; y++) {
+        let count = 0;
+        for (let x = x0; x <= x1; x++) count += ink[y * width + x];
+        rows[y] = count;
+      }
+      const found = inkRuns(rows, gap).filter(([a, b]) => b - a >= unit * 0.8);
+      if (found.length < 2) continue;
+
+      const [rankBand, suitBand] = found;
+      const rankHeight = rankBand[1] - rankBand[0];
+      // The suit is printed right under the rank. Anything further down is the
+      // card's own artwork, and reading that as a suit is worse than none.
+      if (suitBand[0] - rankBand[1] > rankHeight * 1.6 + unit * 3) continue;
+      strip = [x0, x1];
+      bands = [rankBand, suitBand];
+      break;
+    }
+    if (strip) break;
   }
-  const bands = inkRuns(rows, gap).filter(([a, b]) => b - a >= unit * 0.8);
-  if (bands.length < 2) return null;
+  if (!strip) return null;
 
+  const [x0, x1] = strip;
   const [rankBand, suitBand] = bands;
-  const rankHeight = rankBand[1] - rankBand[0];
-  // The suit is printed right under the rank. Anything further down is the
-  // card's own artwork, and reading that as a suit is worse than reading none.
-  if (suitBand[0] - rankBand[1] > rankHeight * 1.6 + unit * 3) return null;
 
   const crop = (band) => {
     const w = x1 - x0 + 1;
@@ -863,13 +919,21 @@ function shapeAgreement(symbol, symbolDistance, template) {
  * next best by a hair is a coin toss, and this returns the margin so the
  * caller can refuse to guess.
  */
+export function baseLabel(key) {
+  const cut = key.indexOf('#');
+  return cut === -1 ? key : key.slice(0, cut);
+}
+
 export function matchSymbol(symbol, templates, allowed, weights = WEIGHTS.rank) {
   if (!symbol) return { label: null, score: 0, margin: 0 };
 
   let best = { label: null, score: -1 };
   let second = -1;
   const symbolDistance = distanceTransform(symbol.bits, symbol.width, symbol.height);
-  for (const [label, template] of Object.entries(templates)) {
+  for (const [key, template] of Object.entries(templates)) {
+    // One card can have several templates - a deck's K may be a serif K or a
+    // sans one, and both are kept. Whichever fits, the answer is still K.
+    const label = baseLabel(key);
     if (allowed && !allowed.includes(label)) continue;
     if (!template || template.bits.length !== symbol.bits.length) continue;
 
@@ -902,10 +966,12 @@ export function matchSymbol(symbol, templates, allowed, weights = WEIGHTS.rank) 
       score -= Math.min(0.25, ratio * 0.35);
     }
 
+    // The runner-up is the best score for a *different* card: two templates of
+    // the same rank agreeing is not an ambiguity, it is a confirmation.
     if (score > best.score) {
-      second = best.score;
+      if (best.label !== null && best.label !== label) second = Math.max(second, best.score);
       best = { label, score };
-    } else if (score > second) {
+    } else if (label !== best.label && score > second) {
       second = score;
     }
   }
@@ -969,7 +1035,7 @@ export class CardReader {
 
       const area = polygonArea(quad);
       if (area <= 0) continue;
-      if (blob.area / area < this.options.minSolidity) continue;
+      if ((blob.spanArea ?? blob.area) / area < this.options.minSolidity) continue;
       if (hullError(hull, quad) > this.options.maxHullError) continue;
 
       const ordered = orderQuad(quad);
