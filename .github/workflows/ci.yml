@@ -22,7 +22,10 @@ jobs:
         run: |
           for file in index.html styles.css app.js sw.js manifest.webmanifest \
                       src/engine.js src/store.js \
-                      icons/icon-192.png icons/icon-512.png icons/icon-maskable-512.png; do
+                      icons/icon-192.png icons/icon-512.png icons/icon-maskable-512.png \
+                      fonts/assistant-hebrew.woff2 fonts/assistant-latin.woff2 \
+                      fonts/frank-ruhl-libre-hebrew.woff2 fonts/frank-ruhl-libre-latin.woff2 \
+                      fonts/suez-one-hebrew.woff2 fonts/suez-one-latin.woff2; do
             test -f "$file" || { echo "missing: $file"; exit 1; }
           done
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"

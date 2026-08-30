@@ -6,7 +6,7 @@
  * signal - which is the normal state of a kitchen table full of people.
  */
 
-const CACHE = 'poker-manager-v4';
+const CACHE = 'poker-manager-v5';
 
 const SHELL = [
   '.',
@@ -21,6 +21,8 @@ const SHELL = [
   'fonts/assistant-latin.woff2',
   'fonts/frank-ruhl-libre-hebrew.woff2',
   'fonts/frank-ruhl-libre-latin.woff2',
+  'fonts/suez-one-hebrew.woff2',
+  'fonts/suez-one-latin.woff2',
   'icons/icon-192.png',
   'icons/icon-512.png',
 ];

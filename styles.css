@@ -42,6 +42,24 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+@font-face {
+  font-family: "Suez One";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/suez-one-hebrew.woff2") format("woff2");
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+}
+
+@font-face {
+  font-family: "Suez One";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/suez-one-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   /* LIGHT (default): warm card stock and printed ink, with the felt kept for
      the top rail so the page still reads as a card table. Brass is the accent;
@@ -76,6 +94,14 @@
   --shadow-sm: 0 1px 2px rgba(28, 38, 30, .06);
   --shadow-md: 0 4px 14px rgba(28, 38, 30, .09);
 
+  /* The ground the board panels sit on - a shade under the page so a panel
+     edge is visible without shouting. Only the big-screen board uses it. */
+  --board-ground: #e7e1ce;
+
+  /* Titles get their own voice: Suez One is a heavy Hebrew display face, so a
+     heading can never quietly fall back to whatever the system happens to
+     have. Frank Ruhl Libre stays the reading serif for names and figures. */
+  --display: "Suez One", "Frank Ruhl Libre", Georgia, serif;
   --serif: "Frank Ruhl Libre", Georgia, "Times New Roman", serif;
   --sans: "Assistant", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 
@@ -120,6 +146,8 @@
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
     --shadow-md: 0 6px 20px rgba(0, 0, 0, .45);
+
+    --board-ground: #060d0a;
   }
 }
 
@@ -152,6 +180,8 @@
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-md: 0 6px 20px rgba(0, 0, 0, .45);
+
+  --board-ground: #060d0a;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -226,10 +256,10 @@ svg[class*="icon"] {
 .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
 
 .brand-text {
-  font-family: var(--serif);
-  font-weight: 700;
-  font-size: 1.14rem;
-  letter-spacing: .01em;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 1.16rem;
+  letter-spacing: .005em;
 }
 
 /* A clay chip: brass rim, notched edge, dark core. */
@@ -255,8 +285,8 @@ svg[class*="icon"] {
 }
 
 .pot-value {
-  font-family: var(--serif);
-  font-weight: 700;
+  font-family: var(--display);
+  font-weight: 400;
   font-size: 1.32rem;
   color: var(--bar-accent);
   font-variant-numeric: tabular-nums;
@@ -593,9 +623,11 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .section-head h2 {
-  font-family: var(--serif);
-  font-size: 1rem;
-  font-weight: 700;
+  font-family: var(--display);
+  font-size: 1.02rem;
+  font-weight: 400;
+  color: var(--brass);
+  letter-spacing: .01em;
 }
 
 .section-head .muted {
@@ -807,99 +839,151 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
    nobody walks to the television to change tabs.
    ========================================================================== */
 
-@media (min-width: 900px) {
-  body { padding-bottom: 0; }
+@media (min-width: 1040px) {
+  /* The page itself never scrolls here. The frame is exactly one viewport
+     tall and every screen is a panel of its own inside it, so the rail, the
+     pot and all five headings stay put all evening. A panel that outgrows
+     its cell scrolls inside its own border, which is a much smaller journey
+     than a page that runs to three screens. */
+  html { height: 100%; }
 
-  .topbar-inner {
-    max-width: 1600px;
-    padding: 16px 28px;
+  /* Tighter than the phone: every row saved is a row nobody has to scroll to. */
+  :root { --pad: 13px; --gap: 9px; }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 0;
+    background-color: var(--board-ground);
   }
 
-  .brand-text { font-size: clamp(1.3rem, 1.6vw, 2rem); }
-  .brand-mark { width: clamp(26px, 2.2vw, 38px); height: clamp(26px, 2.2vw, 38px); }
-  .pot-label { font-size: clamp(.68rem, .75vw, .9rem); }
-  .pot-value { font-size: clamp(1.9rem, 3.1vw, 3.6rem); }
+  .topbar { position: static; flex: none; }
 
+  .topbar-inner {
+    max-width: none;
+    padding: 12px clamp(16px, 1.8vw, 30px);
+  }
+
+  .brand-text { font-size: clamp(1.25rem, 1.5vw, 1.95rem); }
+  .brand-mark { width: clamp(26px, 2.2vw, 38px); height: clamp(26px, 2.2vw, 38px); }
+  .pot-label { font-size: clamp(.66rem, .72vw, .88rem); }
+  .pot-value { font-size: clamp(1.7rem, 2.5vw, 3rem); }
+
+  /* The table keeps a full-height lane of its own because the roster is the
+     longest thing in the app; the other four screens pair up beside it. */
   #main {
-    max-width: 1600px;
-    padding: 22px 28px 34px;
+    flex: 1;
+    min-height: 0;
+    max-width: none;
     display: grid;
-    gap: 22px;
-    grid-template-columns: minmax(330px, 1fr) minmax(0, 1.45fr);
+    gap: clamp(10px, .9vw, 18px);
+    padding: clamp(10px, .9vw, 18px) clamp(16px, 1.8vw, 30px) clamp(14px, 1.2vw, 22px);
+    grid-template-columns: minmax(300px, 1.05fr) minmax(300px, 1fr) minmax(300px, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
-      "game    settle"
-      "count   settle"
-      "history settle";
-    align-items: start;
+      "game round settle"
+      "game count history";
   }
 
   .view-game { grid-area: game; }
+  .view-round { grid-area: round; }
   .view-count { grid-area: count; }
   .view-settle { grid-area: settle; }
   .view-history { grid-area: history; }
 
-  /* Tabs are a phone affordance; on the board everything is already visible. */
+  /* Tabs are a phone affordance; on the board every screen is already up. */
   .view[hidden] { display: flex !important; }
   .tabbar { display: none; }
-  .toast { bottom: 28px; }
+  .toast { bottom: 24px; }
 
+  /* Each screen is a standing panel with its own frame, so the board reads as
+     five separate things rather than one long strip of cards. */
+  .view {
+    min-height: 0;
+    gap: var(--gap);
+    padding: 0 var(--pad) var(--pad);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface-sunken);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  .view::-webkit-scrollbar { width: 8px; }
+  .view::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+  .view::-webkit-scrollbar-track { background: transparent; }
+
+  /* The heading is the panel's title bar and stays put while the panel scrolls. */
   .board-heading {
     display: block;
-    font-family: var(--serif);
-    font-size: clamp(1rem, 1.15vw, 1.5rem);
-    font-weight: 700;
-    color: var(--brass);
-    letter-spacing: .02em;
-    padding-bottom: 9px;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    margin: 0 calc(var(--pad) * -1) 2px;
+    padding: 10px var(--pad) 8px;
+    background: var(--surface-sunken);
     border-bottom: 1px solid var(--line);
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: clamp(1rem, 1.05vw, 1.35rem);
+    color: var(--brass);
+    letter-spacing: .015em;
   }
 
-  /* The scoreboard column is the thing people actually read from the couch. */
-  .view-settle .result-row { padding: clamp(13px, 1.1vw, 22px) clamp(15px, 1.3vw, 26px); }
-  .view-settle .result-rank { font-size: clamp(.95rem, 1vw, 1.3rem); width: clamp(22px, 1.8vw, 34px); }
-  .view-settle .result-name { font-size: clamp(1.15rem, 1.65vw, 2.1rem); }
-  .view-settle .result-detail { font-size: clamp(.78rem, .82vw, 1.02rem); }
-  .view-settle .result-net { font-size: clamp(1.25rem, 1.9vw, 2.5rem); }
+  .empty { padding: 18px 16px; }
+  .empty svg { width: 26px; height: 26px; margin-bottom: 7px; }
 
-  .view-settle .transfer { padding: clamp(15px, 1.2vw, 24px) clamp(15px, 1.3vw, 26px); }
-  .view-settle .transfer-names { font-size: clamp(1.05rem, 1.4vw, 1.85rem); }
-  .view-settle .transfer-amount { font-size: clamp(1.2rem, 1.7vw, 2.2rem); }
-  .view-settle .transfer-check { width: clamp(25px, 1.8vw, 34px); height: clamp(25px, 1.8vw, 34px); }
-  .view-settle .section-head h2 { font-size: clamp(1rem, 1.15vw, 1.45rem); }
-  .view-settle .status { font-size: clamp(.87rem, .95vw, 1.15rem); }
+  .player { padding: 8px var(--pad); }
+  .step-btn { width: 36px; height: 36px; font-size: 1.15rem; }
+  .checkbox { margin-top: 8px; }
+  .settings-summary { min-height: 42px; padding: 10px var(--pad); }
+  .danger-zone { padding: 10px var(--pad); }
 
-  /* History is reference material here, so it stays quiet and scrolls. */
-  .view-history #historyContent {
-    max-height: 320px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-  }
-}
+  /* Two figures per line instead of four stacked ones. */
+  .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; }
+  .totals .total-line.big { grid-column: 1 / -1; }
 
-/* Three columns once there is genuinely room for them. */
-@media (min-width: 1500px) {
-  #main {
-    grid-template-columns: minmax(360px, .85fr) minmax(360px, .85fr) minmax(0, 1.5fr);
-    grid-template-areas:
-      "game  count   settle"
-      "game  history settle";
-  }
+  /* The count row fits on one line here, so seven players are seven rows. */
+  .count-row { flex-wrap: nowrap; }
+  .count-input { width: 88px; }
+  .count-row .chip-quick { width: auto; margin-top: 0; flex: none; }
+  .count-row .chip-quick button { flex: none; min-height: 34px; padding: 5px 11px; }
+
+  /* The scoreboard is the thing people actually read from across the room. */
+  .view-settle .result-row { padding: clamp(9px, .8vw, 16px) clamp(12px, 1vw, 20px); }
+  .view-settle .result-rank { font-size: clamp(.88rem, .9vw, 1.15rem); width: clamp(20px, 1.6vw, 28px); }
+  .view-settle .result-name { font-size: clamp(1.02rem, 1.15vw, 1.5rem); }
+  .view-settle .result-net { font-size: clamp(1.1rem, 1.3vw, 1.7rem); }
+  .view-settle .transfer { padding: clamp(11px, .9vw, 18px) clamp(12px, 1vw, 20px); }
+  .view-settle .transfer-names { font-size: clamp(1rem, 1.1vw, 1.4rem); }
+  .view-settle .transfer-amount { font-size: clamp(1.12rem, 1.25vw, 1.6rem); }
+
+  /* The felt is the widest thing on the board, so give the cards their room. */
+  .view-round .board-card { max-width: 108px; }
+  .view-round .card-rank { font-size: clamp(1.5rem, 2vw, 2.6rem); }
+  .view-round .card-suit { font-size: clamp(1.2rem, 1.7vw, 2.1rem); }
+  .view-round .pot-box-value { font-size: clamp(2rem, 3vw, 3.6rem); }
+  .view-round .felt-street { font-size: clamp(1.05rem, 1.3vw, 1.6rem); }
 }
 
 /* Television: bigger hit areas and type, since it is viewed from a sofa. */
 @media (min-width: 1900px) {
-  :root { --pad: 22px; --gap: 16px; }
-  body { font-size: 19px; }
-  .player-name { font-size: 1.3rem; }
-  .player-meta { font-size: .95rem; }
-  .step-btn { width: 52px; height: 52px; font-size: 1.6rem; }
-  .step-count { font-size: 1.3rem; }
-  .total-line span { font-size: 1.05rem; }
-  .total-line strong { font-size: 1.2rem; }
-  .total-line.big strong { font-size: 1.7rem; }
-  .hint { font-size: 1rem; }
+  :root { --pad: 20px; --gap: 14px; }
+  body { font-size: 18px; }
+  .player-name { font-size: 1.25rem; }
+  .player-meta { font-size: .92rem; }
+  .step-btn { width: 50px; height: 50px; font-size: 1.5rem; }
+  .step-count { font-size: 1.25rem; }
+  .total-line span { font-size: 1.02rem; }
+  .total-line strong { font-size: 1.16rem; }
+  .total-line.big strong { font-size: 1.6rem; }
+  .hint { font-size: .98rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1223,31 +1307,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .theme-toggle svg { width: 18px; height: 18px; }
 
-/* ---- board layout additions ---- */
+/* ---- phone / tablet: one screen at a time, the columns fold away ---- */
 
-@media (min-width: 900px) {
-  #main {
-    grid-template-columns: minmax(320px, .9fr) minmax(0, 1.3fr) minmax(0, 1.2fr);
-    grid-template-areas:
-      "game  round settle"
-      "count round settle"
-      "history round settle";
-  }
-
-  .view-round { grid-area: round; }
-
-  .view-round .board-card { max-width: 120px; }
-  .view-round .card-rank { font-size: clamp(1.6rem, 2.4vw, 3rem); }
-  .view-round .card-suit { font-size: clamp(1.3rem, 2vw, 2.4rem); }
-  .view-round .pot-box-value { font-size: clamp(2.2rem, 3.6vw, 4.2rem); }
-  .view-round .felt-street { font-size: clamp(1.1rem, 1.4vw, 1.8rem); }
-  .view-round .player-name { font-size: clamp(1.05rem, 1.2vw, 1.5rem); }
-}
-
-@media (max-width: 899px) {
+@media (max-width: 1039px) {
   #main { display: block; }
-  #main > .view { display: none; }
-  #main > .view:not([hidden]) { display: flex; }
+  .board-col { display: contents; }
+  .view { display: none; }
+  .view:not([hidden]) { display: flex; }
 }
 
 /* ---- rank buttons carry the chosen suit ---- */
