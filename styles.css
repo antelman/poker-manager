@@ -303,8 +303,62 @@ svg[class*="icon"] {
 .view { display: flex; flex-direction: column; gap: var(--gap); }
 .view[hidden] { display: none; }
 
-/* Section titles are only meaningful once several sections share the screen. */
+/* Section titles are only meaningful once several sections share the screen.
+   The round is the exception: its title row carries the manual/camera toggle,
+   so it is on screen at every size. */
 .board-heading { display: none; }
+
+.view-round .board-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* On a phone this is the only heading on screen, so it brings its own dress;
+   on the board it inherits the panel title bar like every other section. */
+@media (max-width: 1039px) {
+  .view-round .board-heading {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 1.05rem;
+    color: var(--brass);
+    letter-spacing: .015em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* ---- manual / camera ---- */
+
+.mode-toggle {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+
+.mode-btn {
+  border: none;
+  background: none;
+  border-radius: 999px;
+  padding: 5px 13px;
+  min-height: 32px;
+  font-family: var(--sans);
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+
+.mode-btn.is-active {
+  background: var(--brass);
+  color: var(--on-brass);
+}
 
 .panel {
   background: var(--surface);
@@ -1059,6 +1113,55 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---- card picker ---- */
 
+/* The picker covers the felt rather than pushing it down the page, so the
+   card being filled in stays where the eye left it. */
+.table-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: inherit;
+  background: rgba(6, 20, 14, .62);
+  backdrop-filter: blur(2px);
+  animation: overlay-in .14s ease-out;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.table-overlay-sheet {
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.table-overlay .card-picker {
+  background: var(--surface);
+  border-color: var(--line);
+  padding: 10px;
+  gap: 6px;
+}
+
+/* Compact enough to sit inside the felt without the ranks running off it. */
+.table-overlay .card-picker-head { font-size: .92rem; }
+.table-overlay .card-picker-head .btn { min-height: 32px; padding: 4px 12px; }
+.table-overlay .suit-btn { min-height: 38px; }
+.table-overlay .suit-glyph { font-size: 1.2rem; }
+.table-overlay .suit-grid { gap: 5px; }
+.table-overlay .rank-grid { grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.table-overlay .rank-btn { min-height: 34px; font-size: .9rem; }
+.table-overlay .rank-btn-rank { font-size: .88rem; }
+.table-overlay .rank-btn-suit { font-size: .66rem; }
+.table-overlay .field-label { font-size: .66rem; }
+.table-overlay .card-picker > .btn { min-height: 34px; font-size: .82rem; }
+
 .card-picker {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -1130,45 +1233,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .suit-btn.black .suit-glyph { color: var(--text); }
 .suit-btn.is-chosen .suit-glyph { color: var(--on-brass); }
 .rank-btn:active, .suit-btn:active { transform: scale(.95); }
-
-/* ---- bets ---- */
-
-.bet-row { flex-wrap: wrap; }
-.bet-row.is-short { border-color: var(--lose); }
-
-.bet-quick { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 9px; }
-
-.bet-quick button {
-  flex: 1 1 auto;
-  min-width: 54px;
-  min-height: 40px;
-  padding: 4px 6px;
-  font-size: .82rem;
-  font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--brass);
-  cursor: pointer;
-}
-
-.bet-quick .bet-clear { flex: 0 0 44px; color: var(--text-dim); }
-.bet-quick button:active { transform: scale(.96); }
-
-.dealer-badge {
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--brass);
-  color: var(--on-brass);
-  font-family: var(--sans);
-  font-size: .68rem;
-  font-weight: 700;
-  margin-inline-start: 7px;
-  vertical-align: middle;
-}
 
 /* ---- seating ---- */
 
@@ -1244,30 +1308,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .table-center .card-rank { font-size: clamp(.8rem, 3.1cqw, 1.7rem); }
 .table-center .card-suit { font-size: clamp(.65rem, 2.5cqw, 1.4rem); }
 
-.table-pot {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 14px;
-  border-radius: 999px;
-  background: rgba(6, 26, 18, .62);
-  border: 1px solid rgba(240, 224, 184, .28);
-}
-
-.table-pot-label {
-  font-size: clamp(.56rem, 1.5cqw, .74rem);
-  letter-spacing: .12em;
-  color: rgba(240, 224, 184, .72);
-}
-
-.table-pot-value {
-  font-family: var(--display);
-  font-weight: 400;
-  font-size: clamp(1rem, 3.4cqw, 1.9rem);
-  color: #f0cb85;
-  font-variant-numeric: tabular-nums;
-}
-
 .table-idle { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
 .table-idle-label {
@@ -1285,7 +1325,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-variant-numeric: tabular-nums;
 }
 
-.table-start { min-height: 38px; padding: 7px 18px; font-size: clamp(.74rem, 2cqw, .95rem); }
+.table-start,
+.table-scan { min-height: 38px; padding: 7px 18px; font-size: clamp(.74rem, 2cqw, .95rem); }
 
 /* ---- the chairs ---- */
 
@@ -1415,21 +1456,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   z-index: 3;
 }
 
-.seat-bet {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: var(--brass);
-  color: var(--on-brass);
-  font-size: clamp(.58rem, 1.6cqw, .85rem);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
-  z-index: 3;
-  white-space: nowrap;
-}
-
 .table-bar { display: flex; flex-direction: column; gap: 9px; }
 .table-bar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .table-bar-actions .btn { flex: 1; min-width: 130px; }
@@ -1501,103 +1527,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .rank-btn.black .rank-btn-rank, .rank-btn.black .rank-btn-suit { color: var(--text); }
 .rank-grid.has-suit .rank-btn { background: var(--surface); border-color: var(--line); }
 .rank-grid:not(.has-suit) .rank-btn { opacity: .62; }
-
-/* ---- fold / call / raise ---- */
-
-.bet-row.is-folded { opacity: .5; }
-.bet-row.is-folded .player-name { text-decoration: line-through; }
-
-.fold-badge {
-  font-size: .68rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--line);
-  color: var(--text-dim);
-  margin-inline-start: 7px;
-  vertical-align: middle;
-}
-
-.bet-quick .fold { color: var(--lose); border-color: rgba(191, 54, 57, .4); }
-.bet-quick .call { color: var(--on-brass); background: var(--brass); border-color: var(--brass-strong); }
-.bet-quick .allin { color: var(--text-dim); }
-.bet-quick .wide { flex: 1 0 100%; }
-
-/* ---- winner picker ---- */
-
-.winner-pick { display: flex; flex-direction: column; gap: 12px; }
-.winner-title { font-family: var(--serif); font-weight: 700; font-size: 1.15rem; }
-.winner-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 9px; }
-
-.winner-option {
-  min-height: 62px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface-sunken);
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 8px;
-}
-
-.winner-option.is-chosen { background: var(--brass); border-color: var(--brass-strong); color: var(--on-brass); }
-.winner-name { font-family: var(--serif); font-weight: 700; font-size: 1.05rem; }
-.winner-bet { font-size: .74rem; opacity: .8; font-variant-numeric: tabular-nums; }
-.winner-option:active { transform: scale(.97); }
-.btn:disabled { opacity: .45; cursor: default; }
-
-/* ---- side pots ---- */
-
-.pot-breakdown {
-  margin-top: 11px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  text-align: start;
-}
-
-.pot-slice {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.pot-slice-name { font-size: .78rem; font-weight: 600; color: var(--text-dim); }
-
-.pot-slice-amount {
-  font-family: var(--serif);
-  font-weight: 700;
-  font-size: 1rem;
-  color: var(--brass);
-  font-variant-numeric: tabular-nums;
-}
-
-.pot-slice-who {
-  font-size: .72rem;
-  color: var(--text-faint);
-  text-align: end;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.winner-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-
-.winner-amount {
-  font-family: var(--serif);
-  font-size: 1.35rem;
-  font-weight: 900;
-  color: var(--brass);
-  font-variant-numeric: tabular-nums;
-}
 
 /* ==========================================================================
    The camera scanner
@@ -1705,7 +1634,6 @@ body.is-scanning { overflow: hidden; }
 .scanner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .scanner-actions .btn-primary { flex: 1 1 180px; }
 
-.board-tools { display: flex; justify-content: center; margin-top: 10px; }
 .btn-scan { font-size: .92rem; }
 
 @media (min-width: 700px) {

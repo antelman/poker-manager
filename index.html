@@ -162,7 +162,14 @@
 
   <!-- ===================== סיבוב ===================== -->
   <section class="view view-round" id="view-round" aria-label="הסיבוב הנוכחי" hidden>
-    <h2 class="board-heading">הסיבוב</h2>
+    <h2 class="board-heading">
+      <span class="board-heading-text">הסיבוב</span>
+      <!-- What a tap on the felt does: open the picker, or open the camera. -->
+      <span class="mode-toggle" id="roundMode" role="group" aria-label="דרך הזנת הקלפים">
+        <button type="button" class="mode-btn" data-action="round-input" data-mode="manual">ידני</button>
+        <button type="button" class="mode-btn" data-action="round-input" data-mode="camera">מצלמה</button>
+      </span>
+    </h2>
     <div id="roundContent"></div>
   </section>
 

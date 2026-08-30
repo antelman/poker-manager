@@ -6,15 +6,7 @@ import {
   distributeDiff,
   leaderboard,
   newHand,
-  handPot,
   playerStackChips,
-  buyInChips,
-  currentBet,
-  callAmount,
-  blindBets,
-  activePlayers,
-  sidePots,
-  closeHandWithPots,
   STREETS,
 } from './src/engine.js';
 
@@ -812,79 +804,13 @@ const actions = {
 
   /* ---- the round ---- */
 
+  'round-input'(_, target) {
+    setRoundInput(target.dataset.mode);
+  },
+
   'start-hand'() {
     const last = state.game.hand?.n ?? 0;
-    const hand = newHand(last + 1);
-    // Blinds are the same two entries every single hand, so post them here.
-    hand.bets = blindBets(state.game);
-    state.game.hand = hand;
-    commit();
-  },
-
-  fold(id) {
-    const hand = state.game.hand;
-    if (!hand) return;
-    hand.folded = hand.folded || {};
-    hand.folded[id] = true;
-    commit();
-  },
-
-  unfold(id) {
-    const hand = state.game.hand;
-    if (!hand?.folded) return;
-    delete hand.folded[id];
-    commit();
-  },
-
-  call(id) {
-    const hand = state.game.hand;
-    const player = findPlayer(id);
-    if (!hand || !player) return;
-    const owed = callAmount(player, state.game);
-    if (owed > 0) hand.bets[id] = (Number(hand.bets[id]) || 0) + owed;
-    commit();
-  },
-
-  'all-in'(id) {
-    const hand = state.game.hand;
-    const player = findPlayer(id);
-    if (!hand || !player) return;
-    const stack = playerStackChips(player, state.game);
-    if (stack <= 0) return;
-    hand.bets[id] = (Number(hand.bets[id]) || 0) + stack;
-    commit();
-  },
-
-  'toggle-winner'(id, target) {
-    if (!winnerPick) return;
-    const index = Number(target.dataset.pot) || 0;
-    const chosen = winnerPick[index];
-    if (!chosen) return;
-    if (chosen.has(id)) chosen.delete(id);
-    else chosen.add(id);
-    commit();
-  },
-
-  'cancel-winner'() {
-    winnerPick = null;
-    commit();
-  },
-
-  'confirm-winner'() {
-    const hand = state.game.hand;
-    if (!hand || !winnerPick) return;
-    const after = closeHandWithPots(state.game, winnerPick.map((set) => [...set]));
-    for (const p of state.game.players) p.chipsWon = after[p.id];
-    state.game.hand = null;
-    winnerPick = null;
-    actions['next-dealer']();
-    toast('הסיבוב נסגר');
-  },
-
-  'cancel-hand'() {
-    if (!confirm('לבטל את הסיבוב? ההימורים שהוזנו יימחקו ולא ייזקפו לאף אחד.')) return;
-    state.game.hand = null;
-    winnerPick = null;
+    state.game.hand = newHand(last + 1);
     commit();
   },
 
@@ -894,7 +820,12 @@ const actions = {
     commit();
   },
 
+  /** A tap on the felt means whatever the title row's toggle says it means. */
   'pick-card'(_, target) {
+    if (roundInput === 'camera') {
+      actions['scan-cards']();
+      return;
+    }
     cardPickerSlot = Number(target.dataset.slot);
     pickerRank = null;
     pickerSuit = null;
@@ -921,33 +852,15 @@ const actions = {
     closePicker();
   },
 
-  'bet-add'(id, target) {
-    const hand = state.game.hand;
-    if (!hand) return;
-    const amount = Number(target.dataset.amount) || 0;
-    hand.bets[id] = (Number(hand.bets[id]) || 0) + amount;
-    commit();
-  },
-
-  'bet-clear'(id) {
-    if (!state.game.hand) return;
-    delete state.game.hand.bets[id];
-    commit();
-  },
-
+  /** The one button on the round: clear the felt and pass the button along. */
   'close-hand'() {
-    const hand = state.game.hand;
-    if (!hand) return;
-    if (handPot(hand) === 0) {
-      alert('אין כלום בקופה. תזין הימורים או תבטל את הסיבוב.');
-      return;
-    }
-    // A pot only one player is eligible for has no decision in it, so it is
-    // filled in already and the table only answers the real questions.
-    winnerPick = sidePots(state.game).map((pot) =>
-      pot.eligibleIds.length === 1 ? new Set(pot.eligibleIds) : new Set()
-    );
-    commit();
+    if (!state.game.hand) return;
+    state.game.hand = null;
+    cardPickerSlot = null;
+    pickerRank = null;
+    pickerSuit = null;
+    actions['next-dealer']();
+    toast('הסיבוב נסגר, הדילר עבר לשחקן הבא');
   },
 
   /* ---- seating ---- */
@@ -1294,8 +1207,34 @@ const STREET_CARDS = { preflop: 0, flop: 3, turn: 4, river: 5 };
 let cardPickerSlot = null;
 let pickerRank = null;
 let pickerSuit = null;
-let winnerPick = null; // one Set of player ids per pot, while choosing winners
 let pickedSeat = null; // the chair a player has been lifted off, while reseating
+
+/**
+ * How the community cards get onto the felt: by hand, or through the camera.
+ * It is a property of the device holding the phone, not of the game, so it is
+ * remembered next to the theme rather than broadcast to the other players.
+ */
+const ROUND_INPUT_KEY = 'poker-manager:round-input';
+let roundInput = 'manual';
+
+function setRoundInput(mode) {
+  roundInput = mode === 'camera' ? 'camera' : 'manual';
+  try {
+    localStorage.setItem(ROUND_INPUT_KEY, roundInput);
+  } catch {
+    // Not remembering the choice is not worth failing over.
+  }
+  closePicker();
+}
+
+function initRoundInput() {
+  try {
+    const stored = localStorage.getItem(ROUND_INPUT_KEY);
+    if (stored === 'camera' || stored === 'manual') roundInput = stored;
+  } catch {
+    // Storage is off; the default stands for this session.
+  }
+}
 
 function closePicker() {
   cardPickerSlot = null;
@@ -1459,10 +1398,12 @@ function tableCenter(hand) {
   }
   center.append(board);
 
-  const pot = el('div', 'table-pot');
-  pot.append(el('span', 'table-pot-label', 'קופה'));
-  pot.append(el('strong', 'table-pot-value', String(handPot(hand))));
-  center.append(pot);
+  if (roundInput === 'camera') {
+    const scan = el('button', 'btn btn-primary table-scan', 'סרוק קלפים');
+    scan.type = 'button';
+    scan.dataset.action = 'scan-cards';
+    center.append(scan);
+  }
 
   return center;
 }
@@ -1478,7 +1419,6 @@ function seatNode(seat, hand) {
   if (pickedSeat === seat) classes.push('is-picked');
   if (player && dealer && dealer.id === player.id) classes.push('is-dealer');
 
-  const bet = player && hand ? Number(hand.bets?.[player.id]) || 0 : 0;
   const folded = Boolean(player && hand && hand.folded?.[player.id]);
   if (folded) classes.push('is-folded');
 
@@ -1522,13 +1462,7 @@ function seatNode(seat, hand) {
     );
   }
 
-  if (bet > 0) {
-    const chip = el('span', 'seat-bet', String(bet));
-    chip.style.left = `${50 + (spot.x - 50) * 0.76}%`;
-    chip.style.top = `${50 + (spot.y - 50) * 0.69}%`;
-    return [node, chip];
-  }
-  return [node];
+  return node;
 }
 
 /** The table itself: felt, nine chairs, and the line about moving people around. */
@@ -1549,9 +1483,11 @@ function renderTable(hand) {
     table.append(puck);
   }
 
-  for (let seat = 0; seat < MAX_SEATS; seat++) {
-    for (const node of seatNode(seat, hand)) table.append(node);
-  }
+  for (let seat = 0; seat < MAX_SEATS; seat++) table.append(seatNode(seat, hand));
+
+  // The picker lands on the felt itself, over the card it is filling in.
+  if (cardPickerSlot !== null) table.append(renderCardOverlay());
+
   panel.append(table);
 
   const bar = el('div', 'table-bar');
@@ -1563,22 +1499,28 @@ function renderTable(hand) {
     actions.append(actionBtn('בטל', 'clear-seat-pick', '', 'btn btn-ghost'));
     bar.append(actions);
   } else {
+    // The button moves on its own when a round closes, so there is nothing to
+    // press here - only the one line explaining how to rearrange the table.
     bar.append(el('p', 'hint', 'לחיצה על שחקן מרימה אותו מהכיסא, ולחיצה על כיסא אחר מושיבה או מחליפה.'));
-    const actions = el('div', 'table-bar-actions');
-    const next = el('button', 'btn btn-ghost', 'העבר דילר לשחקן הבא');
-    next.type = 'button';
-    next.dataset.action = 'next-dealer';
-    actions.append(next);
-    bar.append(actions);
   }
   panel.append(bar);
 
   return panel;
 }
 
+/** Paint the manual/camera toggle that lives at the end of the title row. */
+function renderRoundMode() {
+  for (const btn of document.querySelectorAll('#roundMode .mode-btn')) {
+    const on = btn.dataset.mode === roundInput;
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-pressed', String(on));
+  }
+}
+
 function renderRound() {
   const root = $('roundContent');
   root.textContent = '';
+  renderRoundMode();
 
   if (state.game.players.length === 0) {
     root.append(emptyCard('i-cards', 'תוסיף שחקנים במסך "משחק" ואז אפשר לפתוח סיבוב.'));
@@ -1595,10 +1537,9 @@ function renderRound() {
   if (!hand) return;
 
   root.append(renderHandControls(hand));
-  root.append(renderBets(hand));
 }
 
-/** Everything about the live hand that will not fit on the felt itself. */
+/** The street the felt is on, and the one button that ends the round. */
 function renderHandControls(hand) {
   const wrap = el('div', 'panel felt');
 
@@ -1612,37 +1553,23 @@ function renderHandControls(hand) {
   }
   wrap.append(streets);
 
-  const tools = el('div', 'board-tools');
-  const scan = el('button', 'btn btn-ghost btn-scan', 'סרוק קלפים במצלמה');
-  scan.type = 'button';
-  scan.dataset.action = 'scan-cards';
-  tools.append(scan);
-  wrap.append(tools);
-
-  if (cardPickerSlot !== null) wrap.append(renderCardPicker());
-
-  // Show the pots splitting as they form, rather than springing it on people
-  // at showdown.
-  const pots = sidePots(state.game);
-  if (pots.length > 1) {
-    const breakdown = el('div', 'pot-breakdown');
-    pots.forEach((pot, index) => {
-      const row = el('div', 'pot-slice');
-      row.append(el('span', 'pot-slice-name', pot.isMain ? 'קופה ראשית' : `קופת צד ${index}`));
-      row.append(el('span', 'pot-slice-amount', String(pot.amount)));
-      row.append(
-        el(
-          'span',
-          'pot-slice-who',
-          pot.eligibleIds.map((id) => findPlayer(id)?.name).filter(Boolean).join(' · ')
-        )
-      );
-      breakdown.append(row);
-    });
-    wrap.append(breakdown);
-  }
+  const close = el('button', 'btn btn-primary btn-block btn-lg', 'סגור סיבוב');
+  close.type = 'button';
+  close.dataset.action = 'close-hand';
+  wrap.append(close);
 
   return wrap;
+}
+
+/** The picker, laid over the felt with the card it is filling in behind it. */
+function renderCardOverlay() {
+  const overlay = el('div', 'table-overlay');
+
+  const sheet = el('div', 'table-overlay-sheet');
+  sheet.append(renderCardPicker());
+  overlay.append(sheet);
+
+  return overlay;
 }
 
 /**
@@ -1702,90 +1629,6 @@ function renderCardPicker() {
   return picker;
 }
 
-/** One row per player: what they are sitting behind and what they have bet. */
-function renderBets(hand) {
-  if (winnerPick) return renderWinnerPick(hand);
-
-  const wrap = el('div', 'players bets');
-  const toMatch = currentBet(hand);
-  const folded = hand.folded || {};
-
-  for (const player of state.game.players) {
-    const stack = playerStackChips(player, state.game);
-    const bet = Number(hand.bets?.[player.id]) || 0;
-    const isFolded = Boolean(folded[player.id]);
-    const owed = callAmount(player, state.game);
-
-    const row = el('div', `player bet-row${isFolded ? ' is-folded' : ''}`);
-
-    const main = el('div', 'player-main');
-    const nameLine = el('div', 'player-name');
-    nameLine.append(document.createTextNode(player.name));
-    if (dealerName() === player.name) nameLine.append(el('span', 'dealer-badge', 'D'));
-    if (isFolded) nameLine.append(el('span', 'fold-badge', 'פרש'));
-    main.append(nameLine);
-    main.append(el('div', 'player-meta', `נשאר ${stack} · בקופה ${bet}`));
-
-    const field = el('div', 'count-input');
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.inputMode = 'numeric';
-    input.min = '0';
-    input.value = bet ? String(bet) : '';
-    input.placeholder = '0';
-    input.disabled = isFolded;
-    input.dataset.action = 'bet-set';
-    input.dataset.id = player.id;
-    input.setAttribute('aria-label', `הימור של ${player.name}`);
-    field.append(input);
-
-    const quick = el('div', 'bet-quick');
-
-    if (isFolded) {
-      quick.append(actionBtn('החזר למשחק', 'unfold', player.id, 'wide'));
-    } else {
-      quick.append(actionBtn('פרש', 'fold', player.id, 'fold'));
-
-      // The one action taken most often: match the table in a single tap.
-      if (owed > 0) {
-        quick.append(actionBtn(`השווה ${owed}`, 'call', player.id, 'call'));
-      } else {
-        quick.append(actionBtn("צ'ק", 'call', player.id, 'call'));
-      }
-
-      for (const amount of raiseSteps(toMatch)) {
-        quick.append(actionBtn(`+${amount}`, 'bet-add', player.id, '', { amount }));
-      }
-
-      if (stack > 0) quick.append(actionBtn('אול-אין', 'all-in', player.id, 'allin'));
-    }
-
-    row.append(main, field, quick);
-    wrap.append(row);
-  }
-
-  const actions = el('div', 'panel actions-grid');
-  const win = el('button', 'btn btn-primary btn-block btn-lg', 'סגור סיבוב ובחר זוכה');
-  win.type = 'button';
-  win.dataset.action = 'close-hand';
-  actions.append(win);
-  const cancel = el('button', 'btn btn-ghost', 'בטל את הסיבוב');
-  cancel.type = 'button';
-  cancel.dataset.action = 'cancel-hand';
-  actions.append(cancel);
-  wrap.append(actions);
-
-  return wrap;
-}
-
-/** Raise steps scaled to the blinds, so the buttons stay useful all night. */
-function raiseSteps(toMatch) {
-  const big = Number(state.game.blinds?.big) || 0;
-  if (big > 0) return [big, big * 2, big * 5];
-  const base = toMatch > 0 ? toMatch : 5;
-  return [base, base * 2];
-}
-
 function actionBtn(label, action, id, extraClass = '', data = {}) {
   const b = el('button', extraClass, label);
   b.type = 'button';
@@ -1793,78 +1636,6 @@ function actionBtn(label, action, id, extraClass = '', data = {}) {
   b.dataset.id = id;
   for (const [key, value] of Object.entries(data)) b.dataset[key] = String(value);
   return b;
-}
-
-/**
- * One selector per pot. With no all-ins there is a single pot and this looks
- * like a plain list of players; when someone was all-in for less, each pot
- * lists only the players who can actually win it.
- */
-function renderWinnerPick(hand) {
-  const wrap = el('div', 'players bets');
-  const pots = sidePots(state.game);
-
-  pots.forEach((pot, index) => {
-    const panel = el('div', 'panel winner-pick');
-
-    const title = el('div', 'winner-title');
-    title.append(
-      document.createTextNode(
-        pots.length === 1 ? 'מי לקח את הקופה?' : pot.isMain ? 'קופה ראשית' : `קופת צד ${index}`
-      )
-    );
-    title.append(el('span', 'winner-amount', String(pot.amount)));
-    panel.append(title);
-
-    if (pots.length > 1) {
-      panel.append(
-        el(
-          'p',
-          'hint',
-          pot.isMain
-            ? 'כל מי שנשאר ביד יכול לזכות בקופה הזאת.'
-            : 'רק מי שכיסה את הסכום הזה יכול לזכות בקופה הזאת.'
-        )
-      );
-    }
-
-    const options = el('div', 'winner-options');
-    for (const id of pot.eligibleIds) {
-      const player = findPlayer(id);
-      if (!player) continue;
-      const chosen = winnerPick[index]?.has(id);
-      const b = el('button', `winner-option${chosen ? ' is-chosen' : ''}`);
-      b.type = 'button';
-      b.dataset.action = 'toggle-winner';
-      b.dataset.id = id;
-      b.dataset.pot = String(index);
-      b.append(el('span', 'winner-name', player.name));
-      b.append(el('span', 'winner-bet', `שם ${Number(hand.bets?.[id]) || 0}`));
-      options.append(b);
-    }
-    panel.append(options);
-    wrap.append(panel);
-  });
-
-  const unresolved = pots.filter((_, i) => !winnerPick[i] || winnerPick[i].size === 0).length;
-
-  const buttons = el('div', 'panel actions-grid');
-  const confirm = el('button', 'btn btn-primary btn-lg', 'אשר וסגור');
-  confirm.type = 'button';
-  confirm.dataset.action = 'confirm-winner';
-  confirm.disabled = unresolved > 0;
-  const back = el('button', 'btn btn-ghost', 'חזור');
-  back.type = 'button';
-  back.dataset.action = 'cancel-winner';
-  buttons.append(confirm, back);
-  if (unresolved > 0) {
-    buttons.append(
-      el('p', 'hint', `צריך לבחור זוכה לכל קופה - נשארו ${unresolved}.`)
-    );
-  }
-  wrap.append(buttons);
-
-  return wrap;
 }
 
 /* ==========================================================================
@@ -1969,66 +1740,6 @@ function scheduleBroadcast() {
   clearTimeout(broadcastTimer);
   broadcastTimer = setTimeout(() => sync.broadcast(state.game), 350);
 }
-
-/* ---- bet entry, typed rather than tapped ---- */
-
-document.addEventListener('input', (event) => {
-  const target = event.target;
-  if (target.dataset?.action !== 'bet-set') return;
-  const hand = currentHand();
-  if (!hand) return;
-
-  const raw = target.value.trim();
-  const value = raw === '' ? 0 : Number(raw);
-  if (!Number.isFinite(value) || value < 0) return;
-
-  if (value === 0) delete hand.bets[target.dataset.id];
-  else hand.bets[target.dataset.id] = value;
-
-  persist();
-  scheduleBroadcast();
-  renderRoundLive();
-});
-
-/** Refresh the derived numbers on the round screen without rebuilding inputs. */
-function renderRoundLive() {
-  const hand = currentHand();
-  if (!hand) return;
-
-  // The felt panel carries the side-pot split and the table carries the pot
-  // and the bets in front of each chair. Neither holds an input, so they can
-  // be redrawn on every keystroke without moving the caret.
-  const felt = document.querySelector('.felt');
-  if (felt) felt.replaceWith(renderHandControls(hand));
-
-  const potValue = document.querySelector('.table-pot-value');
-  if (potValue) potValue.textContent = String(handPot(hand));
-
-  const table = document.querySelector('.poker-table');
-  if (table) {
-    for (const chip of table.querySelectorAll('.seat-bet')) chip.remove();
-    for (const player of state.game.players) {
-      const bet = Number(hand.bets?.[player.id]) || 0;
-      const spot = SEAT_SPOTS[player.seat];
-      if (bet <= 0 || !spot) continue;
-      const chip = el('span', 'seat-bet', String(bet));
-      chip.style.left = `${50 + (spot.x - 50) * 0.76}%`;
-      chip.style.top = `${50 + (spot.y - 50) * 0.69}%`;
-      table.append(chip);
-    }
-  }
-
-  for (const player of state.game.players) {
-    const input = document.querySelector(`input[data-action="bet-set"][data-id="${player.id}"]`);
-    if (!input) continue;
-    const meta = input.closest('.player')?.querySelector('.player-meta');
-    if (meta) {
-      const bet = Number(hand.bets?.[player.id]) || 0;
-      meta.textContent = `נשאר ${playerStackChips(player, state.game)} · הימר ${bet}`;
-    }
-  }
-}
-
 
 /* ==========================================================================
    The camera
@@ -2452,6 +2163,7 @@ document.addEventListener('visibilitychange', () => {
    ========================================================================== */
 
 initTheme();
+initRoundInput();
 render();
 switchView(activeView);
 

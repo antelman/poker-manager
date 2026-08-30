@@ -6,7 +6,7 @@
  * signal - which is the normal state of a kitchen table full of people.
  */
 
-const CACHE = 'poker-manager-v5';
+const CACHE = 'poker-manager-v6';
 
 const SHELL = [
   '.',
