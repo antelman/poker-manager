@@ -1,0 +1,109 @@
+{
+  "unit": "₪",
+  "chipColors": [
+    {
+      "name": "לבן",
+      "value": 1.0,
+      "hsv": [
+        20,
+        25,
+        225
+      ],
+      "maxDistance": 45.0
+    },
+    {
+      "name": "אדום",
+      "value": 5.0,
+      "hsv": [
+        177,
+        190,
+        170
+      ],
+      "maxDistance": 45.0
+    },
+    {
+      "name": "כחול",
+      "value": 10.0,
+      "hsv": [
+        108,
+        180,
+        150
+      ],
+      "maxDistance": 45.0
+    },
+    {
+      "name": "ירוק",
+      "value": 25.0,
+      "hsv": [
+        70,
+        170,
+        130
+      ],
+      "maxDistance": 45.0
+    },
+    {
+      "name": "שחור",
+      "value": 100.0,
+      "hsv": [
+        0,
+        30,
+        45
+      ],
+      "maxDistance": 45.0
+    }
+  ],
+  "regions": [
+    {
+      "name": "board",
+      "kind": "board",
+      "x": 0.15,
+      "y": 0.05,
+      "w": 0.7,
+      "h": 0.45
+    },
+    {
+      "name": "קופה",
+      "kind": "pot",
+      "x": 0.35,
+      "y": 0.5,
+      "w": 0.3,
+      "h": 0.2
+    },
+    {
+      "name": "שחקן 1",
+      "kind": "player",
+      "x": 0.02,
+      "y": 0.7,
+      "w": 0.3,
+      "h": 0.28
+    },
+    {
+      "name": "שחקן 2",
+      "kind": "player",
+      "x": 0.68,
+      "y": 0.7,
+      "w": 0.3,
+      "h": 0.28
+    }
+  ],
+  "cards": {
+    "minAreaFrac": 0.004,
+    "maxAreaFrac": 0.3,
+    "thresholdOffset": 40,
+    "blur": 5,
+    "matchMaxDiff": 0.42,
+    "stableFrames": 4,
+    "history": 8
+  },
+  "chips": {
+    "minRadiusFrac": 0.012,
+    "maxRadiusFrac": 0.06,
+    "minDistFrac": 0.03,
+    "dp": 1.2,
+    "param1": 110.0,
+    "param2": 26.0,
+    "uniformityMax": 45.0,
+    "stableFrames": 3,
+    "history": 6
+  }
+}

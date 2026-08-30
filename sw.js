@@ -16,6 +16,8 @@ const SHELL = [
   'src/engine.js',
   'src/store.js',
   'src/sync.js',
+  'src/vision.js',
+  'src/deck.js',
   'manifest.webmanifest',
   'fonts/assistant-hebrew.woff2',
   'fonts/assistant-latin.woff2',

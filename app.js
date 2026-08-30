@@ -29,6 +29,8 @@ import {
   firstFreeSeat,
   MAX_SEATS,
 } from './src/store.js';
+import { CardReader, CardTracker } from './src/vision.js';
+import { loadDeck, saveSymbol, learnedCount, forgetDeck } from './src/deck.js';
 import { createSync, newGameCode } from './src/sync.js';
 
 /* ------------------------------------------------------------------ state */
@@ -751,6 +753,62 @@ const actions = {
     commit();
   },
 
+
+  /* ---- the camera ---- */
+
+  'scan-cards'() {
+    openScanner();
+  },
+
+  'scanner-close'() {
+    closeScanner();
+  },
+
+  'scanner-add'() {
+    commitScannedCards();
+  },
+
+  'scanner-drop'(label) {
+    if (!scanner) return;
+    scanner.proposal = scanner.proposal.filter((card) => card !== label);
+    scanner.dropped.add(label);
+    renderScanner();
+  },
+
+  'scanner-learn'() {
+    if (!scanner) return;
+    scanner.mode = 'learn';
+    scanner.taskIndex = 0;
+    scanner.message = null;
+    renderScanner();
+  },
+
+  'scanner-capture'() {
+    captureTemplate();
+  },
+
+  'scanner-skip'() {
+    nextTask();
+  },
+
+  'scanner-scan-mode'() {
+    if (!scanner) return;
+    scanner.mode = 'scan';
+    scanner.message = null;
+    scanner.tracker.reset();
+    renderScanner();
+  },
+
+  'scanner-forget'() {
+    if (!confirm('למחוק את מה שהאפליקציה למדה על החפיסה?')) return;
+    forgetDeck();
+    if (scanner) {
+      scanner.reader.setTemplates(loadDeck());
+      scanner.tracker.reset();
+      renderScanner();
+    }
+    toast('הלמידה נמחקה');
+  },
 
   /* ---- the round ---- */
 
@@ -1554,6 +1612,13 @@ function renderHandControls(hand) {
   }
   wrap.append(streets);
 
+  const tools = el('div', 'board-tools');
+  const scan = el('button', 'btn btn-ghost btn-scan', 'סרוק קלפים במצלמה');
+  scan.type = 'button';
+  scan.dataset.action = 'scan-cards';
+  tools.append(scan);
+  wrap.append(tools);
+
   if (cardPickerSlot !== null) wrap.append(renderCardPicker());
 
   // Show the pots splitting as they form, rather than springing it on people
@@ -1963,6 +2028,422 @@ function renderRoundLive() {
     }
   }
 }
+
+
+/* ==========================================================================
+   The camera
+   Reading the board off the table with the phone that is already running the
+   app. Every frame is processed on the device and thrown away - nothing is
+   uploaded, and nothing reaches the board without someone tapping to add it.
+   ========================================================================== */
+
+/*
+ * The reader works at 960px wide, never upscaling past what the camera gives.
+ * Detail is what separates a spade from a club: at 640 the two are within a
+ * couple of percent of each other and the reader rightly refuses to choose.
+ */
+const SCAN_WIDTH = 960;
+const SCAN_INTERVAL = 60; // ms between frames; the work itself sets the pace
+
+let scanner = null;
+
+/** The wizard's shopping list: every rank, then one card of every suit. */
+function learnTasks() {
+  return [
+    ...RANKS.map((rank) => ({ kind: 'ranks', label: rank, hint: `הראה קלף עם הערך ${rank}` })),
+    ...SUITS.map((suit) => ({
+      kind: 'suits',
+      label: suit.id,
+      hint: `הראה קלף בסדרה ${suit.glyph} ${suit.name}`,
+    })),
+  ];
+}
+
+function cameraProblem(error) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return 'הדפדפן לא נותן גישה למצלמה בעמוד הזה. מצלמה עובדת רק בכתובת מאובטחת (https) או ב-localhost.';
+  }
+  if (error?.name === 'NotAllowedError') {
+    return 'הגישה למצלמה נדחתה. אפשר לאשר אותה מחדש בהגדרות האתר בדפדפן.';
+  }
+  if (error?.name === 'NotFoundError' || error?.name === 'OverconstrainedError') {
+    return 'לא נמצאה מצלמה מתאימה במכשיר הזה.';
+  }
+  if (error?.name === 'NotReadableError') {
+    return 'המצלמה תפוסה על ידי אפליקציה אחרת.';
+  }
+  return 'לא הצלחתי להפעיל את המצלמה.';
+}
+
+async function openScanner() {
+  if (scanner) return;
+
+  const root = el('div', 'scanner');
+  const canvas = el('canvas', 'scanner-canvas');
+  canvas.width = SCAN_WIDTH;
+  canvas.height = Math.round((SCAN_WIDTH * 3) / 4);
+
+  const stage = el('div', 'scanner-stage');
+  stage.append(canvas);
+  const body = el('div', 'scanner-body');
+  root.append(stage, body);
+  document.body.append(root);
+  document.body.classList.add('is-scanning');
+
+  const video = document.createElement('video');
+  video.playsInline = true; // iOS opens a fullscreen player without this
+  video.muted = true;
+  video.setAttribute('playsinline', '');
+
+  scanner = {
+    root,
+    body,
+    canvas,
+    video,
+    reader: new CardReader(loadDeck()),
+    tracker: new CardTracker(),
+    mode: 'scan',
+    proposal: [],
+    dropped: new Set(),
+    detections: [],
+    tasks: learnTasks(),
+    taskIndex: 0,
+    lastFrame: null,
+    lastRun: 0,
+    stream: null,
+    raf: null,
+    error: null,
+    message: null,
+    starting: true,
+  };
+  renderScanner();
+
+  // A browser that is still waiting on the permission prompt looks exactly
+  // like a camera pointed at nothing, so say which one it is.
+  scanner.waitTimer = setTimeout(() => {
+    if (scanner?.starting && !scanner.error) {
+      scanner.message = 'עדיין מחכה לאישור המצלמה בדפדפן.';
+      renderScanner();
+    }
+  }, 6000);
+
+  let stream = null;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported');
+    stream = await navigator.mediaDevices.getUserMedia({
+      // The back camera on a phone; a laptop just gets whatever it has.
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+  } catch (error) {
+    if (!scanner) return;
+    scanner.error = cameraProblem(error);
+    renderScanner();
+    return;
+  }
+  if (!scanner) {
+    // Closed while the permission prompt was still up.
+    for (const track of stream.getTracks()) track.stop();
+    return;
+  }
+  scanner.stream = stream;
+
+  video.srcObject = scanner.stream;
+  try {
+    await video.play();
+  } catch {
+    // Some browsers resolve the frame loop without play() ever settling.
+  }
+  if (scanner) scanner.raf = requestAnimationFrame(scanFrame);
+}
+
+function closeScanner() {
+  if (!scanner) return;
+  if (scanner.raf) cancelAnimationFrame(scanner.raf);
+  clearTimeout(scanner.waitTimer);
+  for (const track of scanner.stream?.getTracks() ?? []) track.stop();
+  scanner.video.srcObject = null;
+  scanner.root.remove();
+  document.body.classList.remove('is-scanning');
+  scanner = null;
+}
+
+/** One pass over a frame: read it, keep what is steady, draw what was found. */
+function scanFrame(now) {
+  if (!scanner) return;
+  scanner.raf = requestAnimationFrame(scanFrame);
+  if (now - scanner.lastRun < SCAN_INTERVAL) return;
+  scanner.lastRun = now;
+
+  const { video, canvas } = scanner;
+  if (video.readyState < 2 || !video.videoWidth) return;
+
+  const width = Math.min(SCAN_WIDTH, video.videoWidth);
+  const height = Math.round((video.videoHeight / video.videoWidth) * width);
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(video, 0, 0, width, height);
+  const frame = context.getImageData(0, 0, width, height);
+  scanner.lastFrame = frame;
+
+  if (scanner.starting) {
+    scanner.starting = false;
+    scanner.message = null;
+    clearTimeout(scanner.waitTimer);
+    renderScanner();
+  }
+
+  scanner.detections = scanner.reader.read(frame.data, width, height);
+
+  if (scanner.mode === 'scan') {
+    const stable = scanner.tracker.update(scanner.detections);
+    // Cards are collected as they turn up, so a flop, a turn and a river can
+    // be scanned in one go while the phone moves around the table.
+    let changed = false;
+    for (const card of stable) {
+      if (scanner.dropped.has(card.label)) continue;
+      if (scanner.proposal.includes(card.label)) continue;
+      if (scanner.proposal.length >= 5) continue;
+      scanner.proposal.push(card.label);
+      changed = true;
+    }
+    if (changed) renderScanner();
+  }
+
+  drawScannerOverlay(context);
+}
+
+/** Outline what the reader can see, so it is obvious what it is looking at. */
+function drawScannerOverlay(context) {
+  context.lineWidth = 3;
+  context.font = 'bold 22px system-ui, sans-serif';
+  context.textBaseline = 'bottom';
+  for (const card of scanner.detections) {
+    const known = Boolean(card.label);
+    context.strokeStyle = known ? '#4ade80' : '#facc15';
+    context.beginPath();
+    card.quad.forEach((point, index) => {
+      if (index === 0) context.moveTo(point.x, point.y);
+      else context.lineTo(point.x, point.y);
+    });
+    context.closePath();
+    context.stroke();
+
+    if (!known) continue;
+    const suit = SUITS.find((s) => s.id === card.suit);
+    const text = `${card.rank}${suit ? suit.glyph : ''}`;
+    const x = Math.min(...card.quad.map((p) => p.x));
+    const y = Math.min(...card.quad.map((p) => p.y));
+    context.fillStyle = 'rgba(0,0,0,.65)';
+    context.fillRect(x, y - 28, context.measureText(text).width + 14, 28);
+    context.fillStyle = '#4ade80';
+    context.fillText(text, x + 7, y - 4);
+  }
+}
+
+/* ------------------------------------------------------------- the panel */
+
+function renderScanner() {
+  if (!scanner) return;
+  const body = scanner.body;
+  body.textContent = '';
+
+  const head = el('div', 'scanner-head');
+  head.append(el('strong', null, scanner.mode === 'learn' ? 'לימוד החפיסה' : 'סריקת קלפים'));
+  const close = el('button', 'btn btn-ghost', 'סגור');
+  close.type = 'button';
+  close.dataset.action = 'scanner-close';
+  head.append(close);
+  body.append(head);
+
+  if (scanner.error) {
+    body.append(el('p', 'scanner-error', scanner.error));
+    return;
+  }
+  if (scanner.message) body.append(el('p', 'scanner-message', scanner.message));
+
+  if (scanner.mode === 'learn') renderLearnPanel(body);
+  else renderScanPanel(body);
+}
+
+function renderScanPanel(body) {
+  const learned = learnedCount();
+  if (scanner.starting) {
+    body.append(el('p', 'scanner-hint', 'מבקש גישה למצלמה…'));
+    return;
+  }
+  body.append(
+    el(
+      'p',
+      'scanner-hint',
+      learned >= 17
+        ? 'כוון את המצלמה לקלפים שעל השולחן. אפשר גם מהצד - האפליקציה מיישרת את הזווית.'
+        : 'כוון את המצלמה לקלפים. לדיוק גבוה יותר כדאי ללמד את החפיסה שלך פעם אחת.'
+    )
+  );
+
+  const cards = el('div', 'scanner-cards');
+  if (scanner.proposal.length === 0) {
+    cards.append(el('span', 'scanner-empty', 'עוד לא זוהה קלף'));
+  }
+  for (const label of scanner.proposal) {
+    const suit = SUITS.find((s) => s.id === label.slice(-1));
+    const chip = el('button', `scanner-card ${suit && 'hd'.includes(suit.id) ? 'red' : 'black'}`);
+    chip.type = 'button';
+    chip.dataset.action = 'scanner-drop';
+    chip.dataset.id = label;
+    chip.append(el('span', 'scanner-card-rank', label.slice(0, -1)));
+    chip.append(el('span', 'scanner-card-suit', suit ? suit.glyph : ''));
+    chip.setAttribute('aria-label', `הסר ${label.slice(0, -1)} ${suit ? suit.name : ''}`);
+    cards.append(chip);
+  }
+  body.append(cards);
+  if (scanner.proposal.length > 0) {
+    body.append(el('span', 'scanner-note', 'הקשה על קלף מסירה אותו מהרשימה'));
+  }
+
+  const actions = el('div', 'scanner-actions');
+  const add = el(
+    'button',
+    'btn btn-primary btn-lg',
+    scanner.proposal.length > 1 ? `הוסף ${scanner.proposal.length} קלפים ללוח` : 'הוסף ללוח'
+  );
+  add.type = 'button';
+  add.dataset.action = 'scanner-add';
+  add.disabled = scanner.proposal.length === 0;
+  actions.append(add);
+
+  const learn = el('button', 'btn btn-ghost', learned >= 17 ? 'למד מחדש' : `למד את החפיסה (${learned}/17)`);
+  learn.type = 'button';
+  learn.dataset.action = 'scanner-learn';
+  actions.append(learn);
+  body.append(actions);
+}
+
+function renderLearnPanel(body) {
+  const task = scanner.tasks[scanner.taskIndex];
+  if (!task) {
+    body.append(el('p', 'scanner-hint', 'החפיסה נלמדה. אפשר לחזור לסריקה.'));
+    const done = el('button', 'btn btn-primary btn-lg', 'חזרה לסריקה');
+    done.type = 'button';
+    done.dataset.action = 'scanner-scan-mode';
+    body.append(done);
+    return;
+  }
+
+  body.append(el('p', 'scanner-hint', `${task.hint} — קרוב, שטוח ומואר, ואז צלם.`));
+  body.append(el('span', 'scanner-note', `${scanner.taskIndex + 1} מתוך ${scanner.tasks.length}`));
+
+  const actions = el('div', 'scanner-actions');
+  const capture = el('button', 'btn btn-primary btn-lg', 'צלם');
+  capture.type = 'button';
+  capture.dataset.action = 'scanner-capture';
+  actions.append(capture);
+
+  const skip = el('button', 'btn btn-ghost', 'דלג');
+  skip.type = 'button';
+  skip.dataset.action = 'scanner-skip';
+  actions.append(skip);
+
+  const back = el('button', 'btn btn-ghost', 'חזרה לסריקה');
+  back.type = 'button';
+  back.dataset.action = 'scanner-scan-mode';
+  actions.append(back);
+
+  const forget = el('button', 'btn btn-ghost', 'מחק למידה');
+  forget.type = 'button';
+  forget.dataset.action = 'scanner-forget';
+  actions.append(forget);
+  body.append(actions);
+}
+
+/* ------------------------------------------------------------- committing */
+
+/** Put scanned cards into the empty board slots, in the order they were seen. */
+function addCardsToBoard(labels) {
+  const hand = currentHand();
+  if (!hand) return 0;
+
+  let added = 0;
+  for (const label of labels) {
+    if (hand.board.includes(label)) continue;
+    const slot = [0, 1, 2, 3, 4].find((index) => !hand.board[index]);
+    if (slot === undefined) break;
+    hand.board[slot] = label;
+    added++;
+  }
+  if (added === 0) return 0;
+
+  // Same rule as the picker: the felt decides the street.
+  const filled = hand.board.filter(Boolean).length;
+  const street = filled >= 5 ? 'river' : filled === 4 ? 'turn' : filled >= 3 ? 'flop' : hand.street;
+  if (STREETS.indexOf(street) > STREETS.indexOf(hand.street)) hand.street = street;
+  commit();
+  return added;
+}
+
+function commitScannedCards() {
+  if (!scanner) return;
+  if (!currentHand()) {
+    scanner.message = 'אין יד פתוחה - התחל יד ואז סרוק.';
+    renderScanner();
+    return;
+  }
+  const added = addCardsToBoard(scanner.proposal);
+  closeScanner();
+  if (added === 0) toast('הקלפים כבר על הלוח');
+  else toast(added === 1 ? 'קלף נוסף ללוח' : `${added} קלפים נוספו ללוח`);
+}
+
+/* --------------------------------------------------------------- learning */
+
+function captureTemplate() {
+  if (!scanner?.lastFrame) return;
+  const task = scanner.tasks[scanner.taskIndex];
+  if (!task) return;
+
+  const { data, width, height } = scanner.lastFrame;
+  const symbols = scanner.reader.symbols(data, width, height);
+  const symbol = task.kind === 'ranks' ? symbols?.rank : symbols?.suit;
+  if (!symbol) {
+    scanner.message = 'לא הצלחתי לקרוא את הפינה. קרב את הקלף, שטח אותו והאר אותו.';
+    renderScanner();
+    return;
+  }
+  if (!saveSymbol(task.kind, task.label, symbol)) {
+    scanner.message = 'אין מקום לשמור את הלמידה במכשיר.';
+    renderScanner();
+    return;
+  }
+  scanner.reader.setTemplates(loadDeck());
+  scanner.message = null;
+  nextTask();
+}
+
+function nextTask() {
+  if (!scanner) return;
+  scanner.taskIndex++;
+  scanner.message = null;
+  if (scanner.taskIndex >= scanner.tasks.length) {
+    scanner.mode = 'scan';
+    scanner.tracker.reset();
+    toast('החפיסה נלמדה');
+  }
+  renderScanner();
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && scanner) closeScanner();
+});
+
+// A camera left running in the background is a battery and a privacy problem.
+window.addEventListener('pagehide', closeScanner);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) closeScanner();
+});
 
 /* ==========================================================================
    Start

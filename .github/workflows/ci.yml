@@ -21,7 +21,7 @@ jobs:
       - name: Check the static site is complete
         run: |
           for file in index.html styles.css app.js sw.js manifest.webmanifest \
-                      src/engine.js src/store.js \
+                      src/engine.js src/store.js src/vision.js src/deck.js \
                       icons/icon-192.png icons/icon-512.png icons/icon-maskable-512.png \
                       fonts/assistant-hebrew.woff2 fonts/assistant-latin.woff2 \
                       fonts/frank-ruhl-libre-hebrew.woff2 fonts/frank-ruhl-libre-latin.woff2 \
@@ -30,5 +30,25 @@ jobs:
           done
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
           node --check app.js
+          node --check src/vision.js
+          node --check src/deck.js
           node --check sw.js
           node --check scripts/serve.js
+
+  vision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the camera dependencies
+        run: python3 -m pip install --quiet opencv-python-headless numpy
+
+      - name: Run the table camera tests
+        run: python3 -m unittest discover -s vision/tests
+
+      - name: Read a drawn table end to end
+        run: python3 vision/table_vision.py selftest --config vision/config.example.json

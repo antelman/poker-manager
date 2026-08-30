@@ -9,9 +9,11 @@
  *   dist/embed.html     the same page as body content only, for hosts that
  *                       supply their own <html>/<head> wrapper
  *
- * The modules are concatenated rather than bundled by a tool: there are three
- * of them, the dependency order is fixed, and adding a bundler to a project
- * with no dependencies would cost more than it saves.
+ * The modules are concatenated rather than bundled by a tool: there are a
+ * handful of them, the dependency order is fixed, and adding a bundler to a
+ * project with no dependencies would cost more than it saves. Every module
+ * app.js imports has to be listed here - one that is missing only shows up as
+ * a ReferenceError once the page is open.
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -91,21 +93,43 @@ async function inlineFonts(css) {
   return inlined;
 }
 
+/**
+ * Refuse to ship a bundle that is missing a module app.js imports. Stripping
+ * the import lines hides the mistake until the page throws a ReferenceError in
+ * front of a table full of people.
+ */
+function assertNothingMissing(appSource, bundled) {
+  const imported = [...appSource.matchAll(/from\s+['"]\.\/(src\/[\w.-]+\.js)['"]/g)].map((m) => m[1]);
+  const missing = imported.filter((file) => !bundled.includes(file));
+  if (missing.length > 0) {
+    throw new Error(
+      `Cannot bundle: app.js imports ${missing.join(', ')}, which the build does not include.\nAdd them to the chunk list.`
+    );
+  }
+}
+
 async function build() {
-  const [html, css, engine, store, app] = await Promise.all([
+  const [html, css, engine, store, sync, vision, deck, app] = await Promise.all([
     read('index.html'),
     read('styles.css'),
     read('src/engine.js'),
     read('src/store.js'),
+    read('src/sync.js'),
+    read('src/vision.js'),
+    read('src/deck.js'),
     read('app.js'),
   ]);
 
   const chunks = [
     ['src/engine.js', stripModuleSyntax(engine)],
     ['src/store.js', stripModuleSyntax(store)],
+    ['src/sync.js', stripModuleSyntax(sync)],
+    ['src/vision.js', stripModuleSyntax(vision)],
+    ['src/deck.js', stripModuleSyntax(deck)],
     ['app.js', stripModuleSyntax(stripServiceWorker(app))],
   ];
 
+  assertNothingMissing(app, chunks.map(([name]) => name));
   assertNoCollisions(chunks);
   const script = chunks.map(([, source]) => source).join('\n\n');
 
