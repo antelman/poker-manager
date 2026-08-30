@@ -53,6 +53,7 @@ function packGame(game) {
       o: p.cashOut,
       s: p.stack ?? null,
       w: p.chipsWon ?? 0,
+      t: p.seat ?? null,
     })),
   };
 }
@@ -76,6 +77,7 @@ function unpackGame(packed, current) {
       cashOut: p.o ?? null,
       stack: p.s ?? null,
       chipsWon: p.w ?? 0,
+      seat: p.t ?? null,
     })),
   };
 }

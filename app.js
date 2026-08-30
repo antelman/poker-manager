@@ -18,7 +18,17 @@ import {
   STREETS,
 } from './src/engine.js';
 
-import { load, save, archive, newGame, newPlayer, exportJSON } from './src/store.js';
+import {
+  load,
+  save,
+  archive,
+  newGame,
+  newPlayer,
+  exportJSON,
+  normalizeSeats,
+  firstFreeSeat,
+  MAX_SEATS,
+} from './src/store.js';
 import { createSync, newGameCode } from './src/sync.js';
 
 /* ------------------------------------------------------------------ state */
@@ -698,7 +708,12 @@ const actions = {
     const player = findPlayer(id);
     if (!player) return;
     if (!confirm(`להסיר את ${player.name} מהמשחק?`)) return;
+    const dealer = dealerPlayer();
     state.game.players = state.game.players.filter((p) => p.id !== id);
+    pickedSeat = null;
+    // The button stays with whoever was holding it, unless they just left.
+    if (dealer && dealer.id !== id) setDealerTo(dealer.id);
+    else state.game.dealerIndex = 0;
     commit();
   },
 
@@ -879,24 +894,47 @@ const actions = {
 
   /* ---- seating ---- */
 
-  'seat-up'(id) {
-    const players = state.game.players;
-    const i = players.findIndex((p) => p.id === id);
-    if (i <= 0) return;
-    [players[i - 1], players[i]] = [players[i], players[i - 1]];
+  /**
+   * One tap lifts a player off their chair, the next tap sits them down.
+   * Tapping an occupied chair swaps the two, which is how people actually
+   * rearrange a table - nobody stands up and waits.
+   */
+  'seat-tap'(_, target) {
+    const seat = Number(target.dataset.seat);
+    if (!Number.isInteger(seat)) return;
+
+    if (pickedSeat === null) {
+      if (playerAtSeat(seat)) pickedSeat = seat;
+      commit();
+      return;
+    }
+    if (pickedSeat === seat) {
+      pickedSeat = null;
+      commit();
+      return;
+    }
+
+    const moving = playerAtSeat(pickedSeat);
+    const sitting = playerAtSeat(seat);
+    if (moving) {
+      const dealer = dealerPlayer();
+      moving.seat = seat;
+      if (sitting) sitting.seat = pickedSeat;
+      normalizeSeats(state.game);
+      if (dealer) setDealerTo(dealer.id);
+    }
+    pickedSeat = null;
     commit();
   },
 
-  'seat-down'(id) {
-    const players = state.game.players;
-    const i = players.findIndex((p) => p.id === id);
-    if (i === -1 || i === players.length - 1) return;
-    [players[i + 1], players[i]] = [players[i], players[i + 1]];
+  'clear-seat-pick'() {
+    pickedSeat = null;
     commit();
   },
 
-  'set-dealer'(_, target) {
-    state.game.dealerIndex = Number(target.dataset.index) || 0;
+  'set-dealer'(id) {
+    setDealerTo(id);
+    pickedSeat = null;
     commit();
   },
 
@@ -1106,8 +1144,15 @@ $('addPlayerForm').addEventListener('submit', (event) => {
   const exists = state.game.players.some((p) => p.name === name);
   if (exists && !confirm(`כבר יש שחקן בשם ${name}. להוסיף בכל זאת?`)) return;
 
+  const seat = firstFreeSeat(state.game);
+  if (seat === null) {
+    alert(`השולחן מלא - ${MAX_SEATS} שחקנים זה המקסימום.`);
+    return;
+  }
+
   const withBuyIn = $('autoBuyIn').checked ? state.game.buyInCents : 0;
-  state.game.players.push(newPlayer(name, withBuyIn));
+  state.game.players.push(newPlayer(name, withBuyIn, seat));
+  normalizeSeats(state.game);
   input.value = '';
   input.focus();
   commit();
@@ -1116,6 +1161,7 @@ $('addPlayerForm').addEventListener('submit', (event) => {
 $('resetGameBtn').addEventListener('click', () => {
   if (!confirm('לאפס את המשחק הנוכחי? כל השחקנים והכניסות יימחקו.')) return;
   state.game = newGame(state.game);
+  pickedSeat = null;
   commit();
   switchView('game');
   toast('המשחק אופס');
@@ -1191,6 +1237,7 @@ let cardPickerSlot = null;
 let pickerRank = null;
 let pickerSuit = null;
 let winnerPick = null; // one Set of player ids per pot, while choosing winners
+let pickedSeat = null; // the chair a player has been lifted off, while reseating
 
 function closePicker() {
   cardPickerSlot = null;
@@ -1236,53 +1283,102 @@ function currentHand() {
   return state.game.hand || null;
 }
 
-function dealerName() {
+function dealerPlayer() {
   const players = state.game.players;
   if (players.length === 0) return null;
   const index = ((state.game.dealerIndex ?? 0) % players.length + players.length) % players.length;
-  return players[index]?.name ?? null;
+  return players[index] ?? null;
 }
 
-function renderRound() {
-  const root = $('roundContent');
-  root.textContent = '';
+function dealerName() {
+  return dealerPlayer()?.name ?? null;
+}
 
-  if (state.game.players.length === 0) {
-    root.append(emptyCard('i-cards', 'תוסיף שחקנים במסך "משחק" ואז אפשר לפתוח סיבוב.'));
-    return;
-  }
-  if (state.game.mode === 'cash') {
-    root.append(emptyCard('i-cards', 'מעקב סיבובים עובד בשיטת ז\'יטונים. אפשר לשנות בהגדרות המשחק.'));
-    return;
-  }
+/** The button belongs to a person, not to a slot in the array. */
+function setDealerTo(id) {
+  const index = state.game.players.findIndex((p) => p.id === id);
+  if (index >= 0) state.game.dealerIndex = index;
+}
 
-  const hand = currentHand();
+function playerAtSeat(seat) {
+  return state.game.players.find((p) => p.seat === seat) ?? null;
+}
+
+/**
+ * Nine chairs round an oval, in the order the action moves: seat 1 sits at
+ * the bottom right and the numbers run clockwise from there. The figures are
+ * percentages of the table box, so the whole thing scales from a phone to a
+ * television without a single hard-coded pixel.
+ */
+const SEAT_SPOTS = [
+  { x: 63.0, y: 88.0 },
+  { x: 37.0, y: 88.0 },
+  { x: 16.0, y: 70.0 },
+  { x: 11.5, y: 43.0 },
+  { x: 25.0, y: 18.5 },
+  { x: 50.0, y: 9.5 },
+  { x: 75.0, y: 18.5 },
+  { x: 88.5, y: 43.0 },
+  { x: 84.0, y: 70.0 },
+];
+
+function tableSurface() {
+  const box = el('div', 'table-surface');
+  box.setAttribute('aria-hidden', 'true');
+  box.innerHTML = `
+<svg viewBox="0 0 200 124" preserveAspectRatio="none" focusable="false">
+  <defs>
+    <linearGradient id="pt-rail" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5c4526"/>
+      <stop offset=".45" stop-color="#3a2a15"/>
+      <stop offset="1" stop-color="#22180b"/>
+    </linearGradient>
+    <radialGradient id="pt-felt" cx="50%" cy="42%" r="72%">
+      <stop offset="0" stop-color="#2c8159"/>
+      <stop offset=".55" stop-color="#1d6042"/>
+      <stop offset="1" stop-color="#0f3c29"/>
+    </radialGradient>
+    <linearGradient id="pt-sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".17"/>
+      <stop offset=".45" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="192" height="116" rx="58" fill="url(#pt-rail)"/>
+  <rect x="4" y="4" width="192" height="116" rx="58" fill="url(#pt-sheen)"/>
+  <rect x="4" y="4" width="192" height="116" rx="58" fill="none" stroke="#a87c2e"
+        stroke-width="1.2" stroke-opacity=".8" vector-effect="non-scaling-stroke"/>
+  <rect x="14.5" y="14.5" width="171" height="95" rx="47" fill="none" stroke="#000000"
+        stroke-width="2" stroke-opacity=".3" vector-effect="non-scaling-stroke"/>
+
+  <rect x="15" y="15" width="170" height="94" rx="47" fill="url(#pt-felt)"/>
+  <rect x="26" y="25" width="148" height="74" rx="37" fill="none" stroke="#ffffff"
+        stroke-width="1" stroke-opacity=".17" stroke-dasharray="4 4.5"
+        vector-effect="non-scaling-stroke"/>
+</svg>`;
+  return box;
+}
+
+/** The middle of the felt: the pot and the board when a hand is live. */
+function tableCenter(hand) {
+  const center = el('div', 'table-center');
+
   if (!hand) {
-    const start = el('div', 'panel empty');
-    start.append(el('p', null, 'אין סיבוב פתוח. פתח סיבוב כדי לעקוב אחרי ההימורים והקלפים.'));
-    const btn = el('button', 'btn btn-primary btn-lg', 'פתח סיבוב');
-    btn.type = 'button';
-    btn.dataset.action = 'start-hand';
-    start.append(btn);
-    root.append(start);
-    root.append(renderSeating());
-    return;
+    const idle = el('div', 'table-idle');
+    const blinds = state.game.blinds || {};
+    idle.append(el('span', 'table-idle-label', 'בליינדים'));
+    idle.append(el('strong', 'table-idle-blinds', `${blinds.small ?? 0} / ${blinds.big ?? 0}`));
+    if (state.game.mode === 'chips') {
+      const btn = el('button', 'btn btn-primary table-start', 'פתח סיבוב');
+      btn.type = 'button';
+      btn.dataset.action = 'start-hand';
+      idle.append(btn);
+    }
+    center.append(idle);
+    return center;
   }
 
-  root.append(renderFelt(hand));
-  root.append(renderBets(hand));
-  root.append(renderSeating());
-}
-
-/** The felt: street, community cards and the pot, sized big for the TV. */
-function renderFelt(hand) {
-  const felt = el('div', 'panel felt');
-
-  const head = el('div', 'felt-head');
-  head.append(el('span', 'felt-street', `${STREET_LABEL[hand.street] || ''} · יד ${hand.n}`));
-  const dealer = dealerName();
-  if (dealer) head.append(el('span', 'felt-dealer', `דילר: ${dealer}`));
-  felt.append(head);
+  center.append(el('span', 'table-street', `${STREET_LABEL[hand.street] || ''} · יד ${hand.n}`));
 
   const board = el('div', 'board-cards');
   const visible = STREET_CARDS[hand.street] ?? 0;
@@ -1303,13 +1399,162 @@ function renderFelt(hand) {
     }
     board.append(slot);
   }
-  felt.append(board);
+  center.append(board);
 
-  if (cardPickerSlot !== null) felt.append(renderCardPicker());
+  const pot = el('div', 'table-pot');
+  pot.append(el('span', 'table-pot-label', 'קופה'));
+  pot.append(el('strong', 'table-pot-value', String(handPot(hand))));
+  center.append(pot);
 
-  const potBox = el('div', 'pot-box');
-  potBox.append(el('span', 'pot-box-label', 'קופת היד'));
-  potBox.append(el('strong', 'pot-box-value', String(handPot(hand))));
+  return center;
+}
+
+/** One chair: the person on it, what they are sitting behind, and their bet. */
+function seatNode(seat, hand) {
+  const player = playerAtSeat(seat);
+  const spot = SEAT_SPOTS[seat];
+  const dealer = dealerPlayer();
+
+  const classes = ['table-seat'];
+  if (!player) classes.push('is-empty');
+  if (pickedSeat === seat) classes.push('is-picked');
+  if (player && dealer && dealer.id === player.id) classes.push('is-dealer');
+
+  const bet = player && hand ? Number(hand.bets?.[player.id]) || 0 : 0;
+  const folded = Boolean(player && hand && hand.folded?.[player.id]);
+  if (folded) classes.push('is-folded');
+
+  const node = el('button', classes.join(' '));
+  node.type = 'button';
+  node.style.left = `${spot.x}%`;
+  node.style.top = `${spot.y}%`;
+  node.dataset.action = 'seat-tap';
+  node.dataset.seat = String(seat);
+
+  if (player) {
+    node.append(el('span', 'seat-avatar', player.name.trim().slice(0, 1)));
+    const body = el('span', 'seat-body');
+    body.append(el('span', 'seat-name', player.name));
+    body.append(
+      el(
+        'span',
+        'seat-stack',
+        state.game.mode === 'chips'
+          ? String(playerStackChips(player, state.game))
+          : plural(player.buyIns.length, 'כניסה אחת', 'כניסות')
+      )
+    );
+    node.append(body);
+    if (folded) node.append(el('span', 'seat-flag', 'פרש'));
+    node.setAttribute(
+      'aria-label',
+      pickedSeat === seat
+        ? `${player.name}, כיסא ${seat + 1}, מורם - בחר כיסא`
+        : `${player.name}, כיסא ${seat + 1}`
+    );
+  } else {
+    node.append(el('span', 'seat-avatar', pickedSeat === null ? String(seat + 1) : '+'));
+    // The same body as an occupied chair, so every avatar lines up on the rail.
+    const body = el('span', 'seat-body');
+    body.append(el('span', 'seat-name', 'פנוי'));
+    node.append(body);
+    node.setAttribute(
+      'aria-label',
+      pickedSeat === null ? `כיסא ${seat + 1}, פנוי` : `הושב בכיסא ${seat + 1}`
+    );
+  }
+
+  if (bet > 0) {
+    const chip = el('span', 'seat-bet', String(bet));
+    chip.style.left = `${50 + (spot.x - 50) * 0.76}%`;
+    chip.style.top = `${50 + (spot.y - 50) * 0.69}%`;
+    return [node, chip];
+  }
+  return [node];
+}
+
+/** The table itself: felt, nine chairs, and the line about moving people around. */
+function renderTable(hand) {
+  const panel = el('div', 'panel table-panel');
+
+  const table = el('div', 'poker-table');
+  table.append(tableSurface());
+  table.append(tableCenter(hand));
+
+  const dealer = dealerPlayer();
+  if (dealer && Number.isInteger(dealer.seat)) {
+    const spot = SEAT_SPOTS[dealer.seat];
+    const puck = el('span', 'dealer-puck', 'D');
+    puck.setAttribute('aria-hidden', 'true');
+    puck.style.left = `${50 + (spot.x - 50) * 0.87}%`;
+    puck.style.top = `${50 + (spot.y - 50) * 0.86}%`;
+    table.append(puck);
+  }
+
+  for (let seat = 0; seat < MAX_SEATS; seat++) {
+    for (const node of seatNode(seat, hand)) table.append(node);
+  }
+  panel.append(table);
+
+  const bar = el('div', 'table-bar');
+  const picked = pickedSeat === null ? null : playerAtSeat(pickedSeat);
+  if (picked) {
+    bar.append(el('p', 'hint', `${picked.name} מורם - לחץ על כיסא כדי להושיב או להחליף.`));
+    const actions = el('div', 'table-bar-actions');
+    actions.append(actionBtn('הפוך לדילר', 'set-dealer', picked.id, 'btn'));
+    actions.append(actionBtn('בטל', 'clear-seat-pick', '', 'btn btn-ghost'));
+    bar.append(actions);
+  } else {
+    bar.append(el('p', 'hint', 'לחיצה על שחקן מרימה אותו מהכיסא, ולחיצה על כיסא אחר מושיבה או מחליפה.'));
+    const actions = el('div', 'table-bar-actions');
+    const next = el('button', 'btn btn-ghost', 'העבר דילר לשחקן הבא');
+    next.type = 'button';
+    next.dataset.action = 'next-dealer';
+    actions.append(next);
+    bar.append(actions);
+  }
+  panel.append(bar);
+
+  return panel;
+}
+
+function renderRound() {
+  const root = $('roundContent');
+  root.textContent = '';
+
+  if (state.game.players.length === 0) {
+    root.append(emptyCard('i-cards', 'תוסיף שחקנים במסך "משחק" ואז אפשר לפתוח סיבוב.'));
+    return;
+  }
+
+  const hand = state.game.mode === 'chips' ? currentHand() : null;
+  root.append(renderTable(hand));
+
+  if (state.game.mode === 'cash') {
+    root.append(emptyCard('i-cards', 'מעקב סיבובים עובד בשיטת ז\'יטונים. אפשר לשנות בהגדרות המשחק.'));
+    return;
+  }
+  if (!hand) return;
+
+  root.append(renderHandControls(hand));
+  root.append(renderBets(hand));
+}
+
+/** Everything about the live hand that will not fit on the felt itself. */
+function renderHandControls(hand) {
+  const wrap = el('div', 'panel felt');
+
+  const streets = el('div', 'street-row');
+  for (const key of ['preflop', 'flop', 'turn', 'river']) {
+    const b = el('button', `street-btn${hand.street === key ? ' is-active' : ''}`, STREET_LABEL[key]);
+    b.type = 'button';
+    b.dataset.action = 'set-street';
+    b.dataset.street = key;
+    streets.append(b);
+  }
+  wrap.append(streets);
+
+  if (cardPickerSlot !== null) wrap.append(renderCardPicker());
 
   // Show the pots splitting as they form, rather than springing it on people
   // at showdown.
@@ -1318,9 +1563,7 @@ function renderFelt(hand) {
     const breakdown = el('div', 'pot-breakdown');
     pots.forEach((pot, index) => {
       const row = el('div', 'pot-slice');
-      row.append(
-        el('span', 'pot-slice-name', pot.isMain ? 'קופה ראשית' : `קופת צד ${index}`)
-      );
+      row.append(el('span', 'pot-slice-name', pot.isMain ? 'קופה ראשית' : `קופת צד ${index}`));
       row.append(el('span', 'pot-slice-amount', String(pot.amount)));
       row.append(
         el(
@@ -1331,22 +1574,10 @@ function renderFelt(hand) {
       );
       breakdown.append(row);
     });
-    potBox.append(breakdown);
+    wrap.append(breakdown);
   }
 
-  felt.append(potBox);
-
-  const streets = el('div', 'street-row');
-  for (const key of ['preflop', 'flop', 'turn', 'river']) {
-    const b = el('button', `street-btn${hand.street === key ? ' is-active' : ''}`, STREET_LABEL[key]);
-    b.type = 'button';
-    b.dataset.action = 'set-street';
-    b.dataset.street = key;
-    streets.append(b);
-  }
-  felt.append(streets);
-
-  return felt;
+  return wrap;
 }
 
 /**
@@ -1571,51 +1802,6 @@ function renderWinnerPick(hand) {
   return wrap;
 }
 
-/** Seating order and the dealer button, both of which rotate during the night. */
-function renderSeating() {
-  const panel = el('div', 'panel seating');
-  panel.append(el('div', 'section-head', '').appendChild(el('h2', null, 'סידור ישיבה')).parentElement);
-
-  const list = el('div', 'seats');
-  state.game.players.forEach((player, index) => {
-    const seat = el('div', `seat${(state.game.dealerIndex ?? 0) === index ? ' is-dealer' : ''}`);
-    seat.append(el('span', 'seat-number', String(index + 1)));
-    seat.append(el('span', 'seat-name', player.name));
-
-    const controls = el('div', 'seat-controls');
-    const up = el('button', 'seat-btn', '▲');
-    up.type = 'button';
-    up.dataset.action = 'seat-up';
-    up.dataset.id = player.id;
-    up.disabled = index === 0;
-    up.setAttribute('aria-label', `הזז את ${player.name} קדימה`);
-
-    const down = el('button', 'seat-btn', '▼');
-    down.type = 'button';
-    down.dataset.action = 'seat-down';
-    down.dataset.id = player.id;
-    down.disabled = index === state.game.players.length - 1;
-    down.setAttribute('aria-label', `הזז את ${player.name} אחורה`);
-
-    const deal = el('button', 'seat-btn deal', 'D');
-    deal.type = 'button';
-    deal.dataset.action = 'set-dealer';
-    deal.dataset.index = String(index);
-    deal.setAttribute('aria-label', `הפוך את ${player.name} לדילר`);
-
-    controls.append(deal, up, down);
-    seat.append(controls);
-    list.append(seat);
-  });
-  panel.append(list);
-
-  const next = el('button', 'btn btn-ghost btn-block', 'העבר דילר לשחקן הבא');
-  next.type = 'button';
-  next.dataset.action = 'next-dealer';
-  panel.append(next);
-  return panel;
-}
-
 /* ==========================================================================
    Theme
    Light by default because a lit room needs a light page; the toggle is
@@ -1666,7 +1852,7 @@ const sync = createSync({
       return;
     }
     if (!packed) return;
-    state.game = sync.merge(packed, state.game);
+    state.game = normalizeSeats(sync.merge(packed, state.game));
     persist();
     render();
     toast('עודכן ממכשיר אחר');
@@ -1744,10 +1930,28 @@ function renderRoundLive() {
   const hand = currentHand();
   if (!hand) return;
 
-  // The felt carries the pot and the side-pot split, both of which change with
-  // every keystroke. It holds no inputs, so replacing it keeps the caret put.
+  // The felt panel carries the side-pot split and the table carries the pot
+  // and the bets in front of each chair. Neither holds an input, so they can
+  // be redrawn on every keystroke without moving the caret.
   const felt = document.querySelector('.felt');
-  if (felt) felt.replaceWith(renderFelt(hand));
+  if (felt) felt.replaceWith(renderHandControls(hand));
+
+  const potValue = document.querySelector('.table-pot-value');
+  if (potValue) potValue.textContent = String(handPot(hand));
+
+  const table = document.querySelector('.poker-table');
+  if (table) {
+    for (const chip of table.querySelectorAll('.seat-bet')) chip.remove();
+    for (const player of state.game.players) {
+      const bet = Number(hand.bets?.[player.id]) || 0;
+      const spot = SEAT_SPOTS[player.seat];
+      if (bet <= 0 || !spot) continue;
+      const chip = el('span', 'seat-bet', String(bet));
+      chip.style.left = `${50 + (spot.x - 50) * 0.76}%`;
+      chip.style.top = `${50 + (spot.y - 50) * 0.69}%`;
+      table.append(chip);
+    }
+  }
 
   for (const player of state.game.players) {
     const input = document.querySelector(`input[data-action="bet-set"][data-id="${player.id}"]`);

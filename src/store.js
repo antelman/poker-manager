@@ -8,6 +8,9 @@
 const KEY = 'poker-manager:v1';
 export const SCHEMA_VERSION = 1;
 
+/** A real table seats nine, and so does this one. */
+export const MAX_SEATS = 9;
+
 export function newId() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -29,13 +32,59 @@ export function newGame(previous) {
   };
 }
 
-export function newPlayer(name, buyInCents) {
+export function newPlayer(name, buyInCents, seat = null) {
   return {
     id: newId(),
     name: name.trim(),
     buyIns: buyInCents > 0 ? [buyInCents] : [],
     cashOut: null,
+    seat,
   };
+}
+
+/** The lowest chair nobody is sitting in, or null when the table is full. */
+export function firstFreeSeat(game) {
+  const taken = new Set((game?.players || []).map((p) => p.seat));
+  for (let seat = 0; seat < MAX_SEATS; seat++) {
+    if (!taken.has(seat)) return seat;
+  }
+  return null;
+}
+
+/**
+ * Give everyone a chair and keep the list in seat order.
+ *
+ * Seats are what the table draws and what the betting order follows, so a
+ * game that predates them - or one that arrives from a peer with a clash -
+ * gets tidied up here rather than at every call site.
+ */
+export function normalizeSeats(game) {
+  const players = game?.players;
+  if (!Array.isArray(players)) return game;
+
+  const taken = new Set();
+  for (const player of players) {
+    const seat = player.seat;
+    if (Number.isInteger(seat) && seat >= 0 && seat < MAX_SEATS && !taken.has(seat)) {
+      taken.add(seat);
+    } else {
+      player.seat = null;
+    }
+  }
+
+  for (const player of players) {
+    if (player.seat != null) continue;
+    for (let seat = 0; seat < MAX_SEATS; seat++) {
+      if (taken.has(seat)) continue;
+      player.seat = seat;
+      taken.add(seat);
+      break;
+    }
+  }
+
+  // Anyone left over (a game saved before the nine-seat cap) sorts last.
+  players.sort((a, b) => (a.seat ?? MAX_SEATS) - (b.seat ?? MAX_SEATS));
+  return game;
 }
 
 function emptyState() {
@@ -59,6 +108,7 @@ export function load() {
     }
     parsed.game.players = parsed.game.players || [];
     parsed.history = parsed.history || [];
+    normalizeSeats(parsed.game);
     return parsed;
   } catch {
     return emptyState();
