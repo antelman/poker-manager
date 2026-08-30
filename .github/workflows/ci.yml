@@ -29,3 +29,21 @@ jobs:
           node --check app.js
           node --check sw.js
           node --check scripts/serve.js
+
+  vision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the camera dependencies
+        run: python3 -m pip install --quiet opencv-python-headless numpy
+
+      - name: Run the table camera tests
+        run: python3 -m unittest discover -s vision/tests
+
+      - name: Read a drawn table end to end
+        run: python3 vision/table_vision.py selftest --config vision/config.example.json

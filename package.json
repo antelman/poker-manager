@@ -8,7 +8,9 @@
     "test": "node --test test/*.test.js",
     "start": "node scripts/serve.js",
     "build": "node scripts/build-standalone.js",
-    "icons": "python3 scripts/make-icons.py"
+    "icons": "python3 scripts/make-icons.py",
+    "vision": "python3 vision/table_vision.py live",
+    "vision:test": "python3 -m unittest discover -s vision/tests"
   },
   "engines": {
     "node": ">=20"

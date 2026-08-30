@@ -3,3 +3,6 @@ node_modules/
 *.log
 .DS_Store
 dist/
+__pycache__/
+vision/config.json
+vision/data/

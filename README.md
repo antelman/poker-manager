@@ -64,6 +64,7 @@ sw.js                      Service Worker לעבודה offline
 manifest.webmanifest       הגדרות PWA
 scripts/serve.js           שרת פיתוח מקומי
 scripts/make-icons.py      יצירת האייקונים
+vision/                    מצלמת שולחן ב-Python: קריאת קלפים וז'יטונים בלייב
 ```
 
 ### על החישוב
@@ -75,6 +76,24 @@ scripts/make-icons.py      יצירת האייקונים
 
 אם הספירה לא מסתדרת עם הקופה, האפליקציה **לא** מבליעה את ההפרש בשקט אצל שחקן
 אקראי אלא מציגה אותו ומציעה לחלק אותו במפורש.
+
+---
+
+## מצלמת שולחן (רשות)
+
+`vision/` הוא סקריפט Python נפרד שמדליק מצלמה, מזהה בזמן אמת את הקלפים שנפתחו
+על השולחן, וסופר את הז'יטונים של כל שחקן לפי ערך שמוגדר לכל צבע.
+
+```bash
+python3 -m pip install -r vision/requirements.txt
+python3 vision/table_vision.py selftest          # בדיקה בלי מצלמה
+python3 vision/table_vision.py live              # קריאה חיה
+npm run vision                                   # אותו דבר
+```
+
+הוא מדפיס כל שינוי לטרמינל ויכול לפרסם את המצב כ-JSON (`--json-out`) או ב-HTTP
+(`--serve 8765`), כך שאפשר יהיה לחבר אותו לאפליקציה. אפליקציית הווב עצמה לא
+תלויה בו בשום צורה. ההסבר המלא, כולל הכיול: [`vision/README.md`](vision/README.md).
 
 ---
 
