@@ -1356,3 +1356,116 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--brass);
   font-variant-numeric: tabular-nums;
 }
+
+/* ==========================================================================
+   The camera scanner
+   A full-screen sheet over the table: the frame the reader is working on, with
+   its findings drawn on top, and the cards it wants to add underneath.
+   ========================================================================== */
+
+body.is-scanning { overflow: hidden; }
+
+.scanner {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.scanner-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a1410;
+}
+
+.scanner-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  /* The camera is not a mirror here - it is pointed away from the reader. */
+  object-fit: contain;
+}
+
+.scanner-body {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--pad);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 20px rgba(10, 20, 16, .18);
+}
+
+.scanner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 1.08rem;
+}
+
+.scanner-head .btn { min-height: 38px; padding: 6px 14px; }
+
+.scanner-hint { margin: 0; color: var(--text-dim); font-size: .92rem; line-height: 1.45; }
+.scanner-note { color: var(--text-faint); font-size: .82rem; }
+.scanner-empty { color: var(--text-faint); font-size: .92rem; }
+
+.scanner-message,
+.scanner-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  font-size: .92rem;
+  line-height: 1.45;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+
+.scanner-error { color: var(--lose); border-color: color-mix(in srgb, var(--lose) 35%, var(--line)); }
+
+.scanner-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 46px;
+}
+
+.scanner-card {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scanner-card.red { color: #c8262b; }
+.scanner-card.black { color: var(--text); }
+.scanner-card:active { transform: scale(.96); }
+.scanner-card-suit { font-size: 1rem; }
+
+.scanner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.scanner-actions .btn-primary { flex: 1 1 180px; }
+
+.board-tools { display: flex; justify-content: center; margin-top: 10px; }
+.btn-scan { font-size: .92rem; }
+
+@media (min-width: 700px) {
+  .scanner-body { max-width: 640px; margin: 0 auto; width: 100%; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+}
