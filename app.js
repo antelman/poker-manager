@@ -21,7 +21,8 @@ import {
   firstFreeSeat,
   MAX_SEATS,
 } from './src/store.js';
-import { CardReader, CardTracker } from './src/vision.js';
+import { CardReader, CardTracker, grayscale, sceneDifference } from './src/vision.js';
+import { TableWatch, WATCH_DEFAULTS, CLEARING, WATCHING } from './src/table-watch.js';
 import { loadDeck, saveSymbol, learnedCount, forgetDeck } from './src/deck.js';
 import { createSync, newGameCode } from './src/sync.js';
 
@@ -749,11 +750,27 @@ const actions = {
   /* ---- the camera ---- */
 
   'scan-cards'() {
+    openScanner({ table: false });
+  },
+
+  'scan-table'() {
+    openScanner({ table: true });
+  },
+
+  'scan-open'() {
     openScanner();
   },
 
-  'scanner-close'() {
+  'scanner-dock'() {
+    dockScanner();
+  },
+
+  'scanner-stop'() {
     closeScanner();
+  },
+
+  'scanner-undo'() {
+    undoAutoCards();
   },
 
   'scanner-add'() {
@@ -769,7 +786,7 @@ const actions = {
 
   'scanner-learn'() {
     if (!scanner) return;
-    scanner.mode = 'learn';
+    scanner.panel = 'learn';
     scanner.taskIndex = 0;
     scanner.message = null;
     renderScanner();
@@ -785,7 +802,7 @@ const actions = {
 
   'scanner-scan-mode'() {
     if (!scanner) return;
-    scanner.mode = 'scan';
+    scanner.panel = 'scan';
     scanner.message = null;
     scanner.tracker.reset();
     renderScanner();
@@ -813,8 +830,11 @@ const actions = {
   },
 
   'start-hand'() {
-    const last = state.game.hand?.n ?? 0;
+    // The count lives on the game: a hand that closed takes its number with
+    // it, and without this every hand of the night would be called "hand 1".
+    const last = Math.max(state.game.handsPlayed ?? 0, state.game.hand?.n ?? 0);
     state.game.hand = newHand(last + 1);
+    state.game.handsPlayed = state.game.hand.n;
     commit();
   },
 
@@ -1004,6 +1024,7 @@ document.addEventListener('click', (event) => {
   const action = target.dataset.action;
 
   if (action === 'toggle-paid') return; // handled on change
+  if (action === 'scanner-table-mode') return; // a checkbox: handled on change
 
   const handler = actions[action];
   if (!handler) return;
@@ -1014,6 +1035,11 @@ document.addEventListener('click', (event) => {
 document.addEventListener('change', (event) => {
   const target = event.target;
   if (!target.dataset) return;
+
+  if (target.dataset.action === 'scanner-table-mode') {
+    setTableMode(target.checked);
+    return;
+  }
 
   if (target.dataset.action === 'toggle-paid') {
     state.game.paid = state.game.paid || {};
@@ -1256,6 +1282,8 @@ function setTableSize(expanded) {
 
 function setRoundInput(mode) {
   roundInput = mode === 'camera' ? 'camera' : 'manual';
+  // Going back to typing cards in means the camera has nothing left to do.
+  if (roundInput === 'manual' && scanner) closeScanner();
   try {
     localStorage.setItem(ROUND_INPUT_KEY, roundInput);
   } catch {
@@ -1405,10 +1433,14 @@ function tableCenter(hand) {
     idle.append(el('span', 'table-idle-label', 'בליינדים'));
     idle.append(el('strong', 'table-idle-blinds', `${blinds.small ?? 0} / ${blinds.big ?? 0}`));
     if (state.game.mode === 'chips') {
-      const btn = el('button', 'btn btn-primary table-start', 'פתח סיבוב');
-      btn.type = 'button';
-      btn.dataset.action = 'start-hand';
-      idle.append(btn);
+      if (scanner?.mode === 'table') {
+        idle.append(el('span', 'table-idle-label', 'המצלמה תפתח סיבוב כשיירדו קלפים'));
+      } else {
+        const btn = el('button', 'btn btn-primary table-start', 'פתח סיבוב');
+        btn.type = 'button';
+        btn.dataset.action = 'start-hand';
+        idle.append(btn);
+      }
     }
     center.append(idle);
     return center;
@@ -1575,6 +1607,7 @@ function renderRound() {
     root.append(emptyCard('i-cards', 'מעקב סיבובים עובד בשיטת ז\'יטונים. אפשר לשנות בהגדרות המשחק.'));
     return;
   }
+  if (roundInput === 'camera' || scanner) root.append(renderCameraPanel());
   if (!hand) return;
 
   root.append(renderHandControls(hand));
@@ -1784,9 +1817,14 @@ function scheduleBroadcast() {
 
 /* ==========================================================================
    The camera
-   Reading the board off the table with the phone that is already running the
-   app. Every frame is processed on the device and thrown away - nothing is
-   uploaded, and nothing reaches the board without someone tapping to add it.
+   Reading the table with the phone that is already running the app. Every
+   frame is processed on the device and thrown away - nothing is uploaded.
+
+   Two ways to use it. A one-off scan reads the cards in front of it and offers
+   them. Table mode leaves the camera on for the evening and runs the round:
+   it opens a hand when a deal lands, fills the board as cards come, and when
+   the table is swept it hands over to the one question a camera cannot answer -
+   who took the pot.
    ========================================================================== */
 
 /*
@@ -1796,6 +1834,32 @@ function scheduleBroadcast() {
  */
 const SCAN_WIDTH = 960;
 const SCAN_INTERVAL = 60; // ms between frames; the work itself sets the pace
+
+/*
+ * A camera left on all evening cannot run the full read ten times a second -
+ * the phone would be hot and flat by the second hand. Each frame is first
+ * compared to a 96x64 thumbnail of the last one, which costs microseconds, and
+ * the expensive read only runs when the table actually changed (or once in a
+ * while regardless, so a missed change cannot strand the state machine).
+ */
+const THUMB_W = 96;
+const THUMB_H = 64;
+const SCENE_CHANGE = 3.2; // average levels of grey
+const ACTIVE_MS = 1500; // keep reading at full speed this long after a change
+const IDLE_FULL_MS = 1200; // and read once in a while even when nothing moves
+
+/*
+ * What makes auto-filling safe is not a stricter score than the scanner uses -
+ * the reader already refuses anything it cannot tell apart, and a second, made
+ * up threshold on top only hides cards it was sure about. It is that nothing
+ * lands on the board until the same card has been read the same way several
+ * frames running, which a flicker, a passing hand or a coin-flip guess between
+ * two ranks does not survive.
+ */
+const AUTO_STABLE_FRAMES = 4;
+
+const TABLE_MODE_KEY = 'poker-manager:table-mode';
+const WATCH_TIMING_KEY = 'poker-manager:watch-timing';
 
 let scanner = null;
 
@@ -1827,51 +1891,103 @@ function cameraProblem(error) {
   return 'לא הצלחתי להפעיל את המצלמה.';
 }
 
-async function openScanner() {
-  if (scanner) return;
+/** Timings for the round watcher; the stored override is a debugging knob. */
+function watchTiming() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WATCH_TIMING_KEY) || 'null');
+    if (raw && typeof raw === 'object') return { ...WATCH_DEFAULTS, ...raw };
+  } catch {
+    // A broken override is not worth failing the camera over.
+  }
+  return { ...WATCH_DEFAULTS };
+}
 
-  const root = el('div', 'scanner');
-  const canvas = el('canvas', 'scanner-canvas');
-  canvas.width = SCAN_WIDTH;
-  canvas.height = Math.round((SCAN_WIDTH * 3) / 4);
+/** Table mode puts cards on the board by itself, so it waits for one more. */
+function trackerOptions(table) {
+  return table ? { stableFrames: AUTO_STABLE_FRAMES } : {};
+}
 
-  const stage = el('div', 'scanner-stage');
-  stage.append(canvas);
-  const body = el('div', 'scanner-body');
-  root.append(stage, body);
-  document.body.append(root);
-  document.body.classList.add('is-scanning');
+function tableModeWanted() {
+  try {
+    return localStorage.getItem(TABLE_MODE_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function rememberTableMode(on) {
+  try {
+    localStorage.setItem(TABLE_MODE_KEY, on ? 'on' : 'off');
+  } catch {
+    // Preference only; the mode still works for this session.
+  }
+}
+
+/* ------------------------------------------------------------ the service */
+
+async function openScanner({ table = false } = {}) {
+  if (scanner) {
+    // Already running - just come back to the full screen view.
+    scanner.docked = false;
+    if (table) setTableMode(true);
+    showOverlay();
+    return;
+  }
 
   const video = document.createElement('video');
   video.playsInline = true; // iOS opens a fullscreen player without this
   video.muted = true;
   video.setAttribute('playsinline', '');
 
+  const canvas = el('canvas', 'scanner-canvas');
+  canvas.width = SCAN_WIDTH;
+  canvas.height = Math.round((SCAN_WIDTH * 2) / 3);
+
+  const thumb = document.createElement('canvas');
+  thumb.width = THUMB_W;
+  thumb.height = THUMB_H;
+
+  // Where each card is re-cut from the camera at its own resolution.
+  const detail = document.createElement('canvas');
+
   scanner = {
-    root,
-    body,
-    canvas,
     video,
+    canvas,
+    thumb,
+    detail,
+    lastThumb: null,
     reader: new CardReader(loadDeck()),
-    tracker: new CardTracker(),
-    mode: 'scan',
+    tracker: new CardTracker(trackerOptions(table || tableModeWanted())),
+    watch: new TableWatch(watchTiming()),
+    mode: table || tableModeWanted() ? 'table' : 'manual',
+    docked: false,
+    overlay: null,
+    body: null,
     proposal: [],
     dropped: new Set(),
     detections: [],
+    occupied: false,
     tasks: learnTasks(),
     taskIndex: 0,
+    panel: 'scan',
     lastFrame: null,
     lastRun: 0,
+    lastFullRead: 0,
+    activeUntil: 0,
+    lastAuto: null,
     stream: null,
     raf: null,
     error: null,
     message: null,
     starting: true,
+    paused: false,
+    wakeLock: null,
   };
-  renderScanner();
+  if (scanner.mode === 'table') adoptOpenHand();
+  showOverlay();
 
-  // A browser that is still waiting on the permission prompt looks exactly
-  // like a camera pointed at nothing, so say which one it is.
+  // A browser still waiting on the permission prompt looks exactly like a
+  // camera pointed at nothing, so say which one it is.
   scanner.waitTimer = setTimeout(() => {
     if (scanner?.starting && !scanner.error) {
       scanner.message = 'עדיין מחכה לאישור המצלמה בדפדפן.';
@@ -1884,7 +2000,9 @@ async function openScanner() {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported');
     stream = await navigator.mediaDevices.getUserMedia({
       // The back camera on a phone; a laptop just gets whatever it has.
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      // As much detail as the phone will give: detection is happy at 960px,
+      // but the index in the corner of a card is only readable at full size.
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false,
     });
   } catch (error) {
@@ -1900,30 +2018,110 @@ async function openScanner() {
   }
   scanner.stream = stream;
 
-  video.srcObject = scanner.stream;
+  video.srcObject = stream;
   try {
     await video.play();
   } catch {
     // Some browsers resolve the frame loop without play() ever settling.
   }
-  if (scanner) scanner.raf = requestAnimationFrame(scanFrame);
+  if (!scanner) return;
+  if (scanner.mode === 'table') keepScreenAwake();
+  scanner.raf = requestAnimationFrame(scanFrame);
 }
 
+/** Stop everything: the loop, the camera light, the screen lock, the panel. */
 function closeScanner() {
   if (!scanner) return;
   if (scanner.raf) cancelAnimationFrame(scanner.raf);
   clearTimeout(scanner.waitTimer);
+  releaseScreen();
   for (const track of scanner.stream?.getTracks() ?? []) track.stop();
   scanner.video.srcObject = null;
-  scanner.root.remove();
+  scanner.overlay?.remove();
   document.body.classList.remove('is-scanning');
   scanner = null;
+  render();
 }
 
-/** One pass over a frame: read it, keep what is steady, draw what was found. */
+/** Leave the camera running, put the panel away. Table mode only. */
+function dockScanner() {
+  if (!scanner) return;
+  if (scanner.mode !== 'table') {
+    closeScanner();
+    return;
+  }
+  scanner.docked = true;
+  scanner.panel = 'scan';
+  scanner.overlay?.remove();
+  scanner.overlay = null;
+  scanner.body = null;
+  document.body.classList.remove('is-scanning');
+  render(); // the dock is drawn as part of the felt
+}
+
+function showOverlay() {
+  if (!scanner || scanner.overlay) return;
+  const root = el('div', 'scanner');
+  const stage = el('div', 'scanner-stage');
+  stage.append(scanner.canvas);
+  const body = el('div', 'scanner-body');
+  root.append(stage, body);
+  document.body.append(root);
+  document.body.classList.add('is-scanning');
+  scanner.overlay = root;
+  scanner.body = body;
+  scanner.docked = false;
+  renderScanner();
+  render(); // the dock behind it gives up the preview canvas
+}
+
+function setTableMode(on) {
+  if (!scanner) return;
+  scanner.mode = on ? 'table' : 'manual';
+  rememberTableMode(on);
+  scanner.tracker = new CardTracker(trackerOptions(on));
+  if (on) {
+    adoptOpenHand();
+    keepScreenAwake();
+  } else {
+    scanner.watch.reset();
+    releaseScreen();
+  }
+  renderScanner();
+  render();
+}
+
+/** Start table mode in step with the game: an open hand is not dealt again. */
+function adoptOpenHand() {
+  const hand = currentHand();
+  if (hand) scanner.watch.assumeLive(hand.board.filter(Boolean));
+  else scanner.watch.reset();
+}
+
+async function keepScreenAwake() {
+  if (!scanner || scanner.wakeLock) return;
+  try {
+    scanner.wakeLock = (await navigator.wakeLock?.request('screen')) ?? null;
+    scanner.wakeLock?.addEventListener?.('release', () => {
+      if (scanner) scanner.wakeLock = null;
+    });
+  } catch {
+    // Not every browser has it, and it is a convenience either way.
+  }
+}
+
+function releaseScreen() {
+  scanner?.wakeLock?.release?.().catch(() => {});
+  if (scanner) scanner.wakeLock = null;
+}
+
+/* ---------------------------------------------------------------- the loop */
+
+
 function scanFrame(now) {
   if (!scanner) return;
   scanner.raf = requestAnimationFrame(scanFrame);
+  if (scanner.paused) return;
   if (now - scanner.lastRun < SCAN_INTERVAL) return;
   scanner.lastRun = now;
 
@@ -1938,8 +2136,6 @@ function scanFrame(now) {
   }
   const context = canvas.getContext('2d', { willReadFrequently: true });
   context.drawImage(video, 0, 0, width, height);
-  const frame = context.getImageData(0, 0, width, height);
-  scanner.lastFrame = frame;
 
   if (scanner.starting) {
     scanner.starting = false;
@@ -1948,25 +2144,189 @@ function scanFrame(now) {
     renderScanner();
   }
 
-  scanner.detections = scanner.reader.read(frame.data, width, height);
-
-  if (scanner.mode === 'scan') {
-    const stable = scanner.tracker.update(scanner.detections);
-    // Cards are collected as they turn up, so a flop, a turn and a river can
-    // be scanned in one go while the phone moves around the table.
-    let changed = false;
-    for (const card of stable) {
-      if (scanner.dropped.has(card.label)) continue;
-      if (scanner.proposal.includes(card.label)) continue;
-      if (scanner.proposal.length >= 5) continue;
-      scanner.proposal.push(card.label);
-      changed = true;
-    }
-    if (changed) renderScanner();
+  // Cheap first: has anything on the table moved since the last look?
+  // A change opens a window of full-speed reading - a card needs several
+  // frames in a row to be trusted, and waiting out the idle cadence for them
+  // would take seconds - and the window closes once the table settles again.
+  const changed = sceneChanged(video);
+  if (changed) scanner.activeUntil = now + ACTIVE_MS;
+  const stale = now - scanner.lastFullRead > IDLE_FULL_MS;
+  if (changed || now < scanner.activeUntil || stale) {
+    const frame = context.getImageData(0, 0, width, height);
+    scanner.lastFrame = frame;
+    scanner.lastFullRead = now;
+    scanner.detections = scanner.reader.read(frame.data, width, height, {
+      detail: detailCrop(video, width),
+    });
+    scanner.occupied = scanner.detections.length > 0;
+    noteReading(now, width);
+    collect(now);
+  } else if (scanner.mode === 'table') {
+    // Nothing moved, so the last reading still stands - keep the clock running.
+    runWatch(now, scanner.occupied, []);
   }
 
   drawScannerOverlay(context);
+  updateStatusLine(now);
 }
+
+/**
+ * Re-cut one card straight from the camera, at the camera's own resolution.
+ *
+ * Detection runs on a frame scaled down to 960px because finding white
+ * rectangles does not need more, but the index in a card's corner might be a
+ * dozen pixels across there and unreadable. Cropping the card out of the video
+ * element instead costs one small draw and gives the reader every pixel the
+ * sensor actually captured.
+ */
+function detailCrop(video, frameWidth) {
+  const scale = video.videoWidth / frameWidth;
+  if (!(scale > 1.05)) return null; // nothing to gain
+
+  return (candidate) => {
+    const quad = candidate.orientations[0];
+    const xs = quad.map((point) => point.x * scale);
+    const ys = quad.map((point) => point.y * scale);
+    const pad = 8;
+    const x0 = Math.max(0, Math.floor(Math.min(...xs)) - pad);
+    const y0 = Math.max(0, Math.floor(Math.min(...ys)) - pad);
+    const x1 = Math.min(video.videoWidth, Math.ceil(Math.max(...xs)) + pad);
+    const y1 = Math.min(video.videoHeight, Math.ceil(Math.max(...ys)) + pad);
+    const width = x1 - x0;
+    const height = y1 - y0;
+    if (width < 16 || height < 16 || width * height > 2.2e6) return null;
+
+    const canvas = scanner.detail;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(video, x0, y0, width, height, 0, 0, width, height);
+    const image = context.getImageData(0, 0, width, height);
+    return {
+      data: image.data,
+      width,
+      height,
+      map: (point) => ({ x: point.x * scale - x0, y: point.y * scale - y0 }),
+    };
+  };
+}
+
+/**
+ * Keep track of what the reader is managing, so the panel can say why nothing
+ * is being read instead of leaving the dealer staring at outlines.
+ */
+function noteReading(now, frameWidth) {
+  const cards = scanner.detections;
+  if (cards.length === 0) return;
+  scanner.sawCardsAt = now;
+  if (cards.some((card) => card.label)) scanner.readCardsAt = now;
+
+  const widths = cards
+    .map((card) => Math.hypot(card.quad[1].x - card.quad[0].x, card.quad[1].y - card.quad[0].y))
+    .sort((a, b) => a - b);
+  scanner.cardWidth = widths[widths.length >> 1] / frameWidth;
+}
+
+/** One line on why cards are being seen but not read, or nothing. */
+function readingTrouble(now) {
+  if (!scanner || scanner.starting || scanner.error) return null;
+  if (now - (scanner.sawCardsAt ?? -Infinity) > 1500) return null;
+  if (now - (scanner.readCardsAt ?? -Infinity) < 2500) return null;
+  if ((scanner.cardWidth ?? 1) < 0.13) {
+    return 'רואה קלפים, אבל הם קטנים מדי בתמונה כדי לקרוא את הפינה. קרב את הטלפון לשולחן.';
+  }
+  return 'רואה קלפים אבל לא מצליח לקרוא אותם. אור אחיד עוזר, ולימוד החפיסה פעם אחת עוזר יותר.';
+}
+
+/** Draw a postage stamp of the frame and compare it with the previous one. */
+function sceneChanged(video) {
+  const context = scanner.thumb.getContext('2d', { willReadFrequently: true });
+  context.drawImage(video, 0, 0, THUMB_W, THUMB_H);
+  const { data } = context.getImageData(0, 0, THUMB_W, THUMB_H);
+  const gray = grayscale(data, THUMB_W, THUMB_H);
+  const difference = sceneDifference(scanner.lastThumb, gray);
+  scanner.lastThumb = gray;
+  return difference > SCENE_CHANGE;
+}
+
+/** Turn this frame's reading into offers (manual) or moves (table mode). */
+function collect(now) {
+  const stable = scanner.tracker.update(scanner.detections);
+
+  if (scanner.mode === 'table') {
+    runWatch(now, scanner.occupied, stable.map((card) => card.label));
+    return;
+  }
+
+  // Cards are collected as they turn up, so a flop, a turn and a river can be
+  // scanned in one go while the phone moves around the table.
+  let changed = false;
+  for (const card of stable) {
+    if (scanner.dropped.has(card.label)) continue;
+    if (scanner.proposal.includes(card.label)) continue;
+    if (scanner.proposal.length >= 5) continue;
+    scanner.proposal.push(card.label);
+    changed = true;
+  }
+  if (changed) renderScanner();
+}
+
+function runWatch(now, occupied, labels) {
+  for (const event of scanner.watch.update({ now, occupied, labels })) {
+    handleWatchEvent(event);
+  }
+}
+
+/* ------------------------------------------------------- running the round */
+
+function handleWatchEvent(event) {
+  if (event.type === 'deal') {
+    startHandFromTable();
+    return;
+  }
+  if (event.type === 'cards') {
+    if (!currentHand()) startHandFromTable();
+    const added = addCardsToBoard(event.labels);
+    if (added > 0) {
+      scanner.lastAuto = { labels: event.labels.slice(-added), hand: currentHand()?.n ?? null };
+      toast(`נוסף ללוח: ${event.labels.slice(-added).map(prettyCard).join(' ')}`);
+    }
+    return;
+  }
+  if (event.type === 'clearing' || event.type === 'settled') {
+    renderDockStatus();
+    return;
+  }
+  if (event.type === 'handEnd') endHandFromTable();
+}
+
+function startHandFromTable() {
+  if (currentHand()) return;
+  if (state.game.players.length === 0 || state.game.mode !== 'chips') return;
+  actions['start-hand']();
+  toast('סיבוב חדש נפתח');
+}
+
+/**
+ * The table was cleared, so the round is over: the felt empties and the button
+ * moves on, exactly as the "סגור סיבוב" button does. Money is never touched
+ * here - it is counted at the end of the night, where it always was.
+ */
+function endHandFromTable() {
+  if (!currentHand()) return;
+  scanner.lastAuto = null;
+  actions['close-hand']();
+  toast('השולחן התפנה - הסיבוב נסגר');
+}
+
+const prettyCard = (label) => {
+  const suit = SUITS.find((s) => s.id === label.slice(-1));
+  return `${label.slice(0, -1)}${suit ? suit.glyph : ''}`;
+};
+
+/* ------------------------------------------------------------- the drawing */
 
 /** Outline what the reader can see, so it is obvious what it is looking at. */
 function drawScannerOverlay(context) {
@@ -1985,8 +2345,7 @@ function drawScannerOverlay(context) {
     context.stroke();
 
     if (!known) continue;
-    const suit = SUITS.find((s) => s.id === card.suit);
-    const text = `${card.rank}${suit ? suit.glyph : ''}`;
+    const text = prettyCard(card.label);
     const x = Math.min(...card.quad.map((p) => p.x));
     const y = Math.min(...card.quad.map((p) => p.y));
     context.fillStyle = 'rgba(0,0,0,.65)';
@@ -1996,18 +2355,127 @@ function drawScannerOverlay(context) {
   }
 }
 
-/* ------------------------------------------------------------- the panel */
+/** What the watcher is doing right now, in one line. */
+function watchStatus(now = performance.now()) {
+  if (!scanner) return null;
+  if (scanner.error) return { tone: 'bad', text: scanner.error };
+  if (scanner.starting) return { tone: 'idle', text: 'מבקש גישה למצלמה…' };
+  if (scanner.mode !== 'table') return { tone: 'idle', text: 'סריקה חד-פעמית' };
+
+  const left = scanner.watch.countdown(now);
+  if (scanner.watch.state === CLEARING && left !== null) {
+    return { tone: 'warn', text: `השולחן התפנה - סוגר את הסיבוב בעוד ${Math.ceil(left / 1000)}` };
+  }
+  if (scanner.watch.state !== WATCHING) {
+    const board = currentHand()?.board.filter(Boolean).length ?? 0;
+    return { tone: 'live', text: board ? `סיבוב פעיל · ${board} קלפים על הלוח` : 'סיבוב פעיל · ממתין לפלופ' };
+  }
+  return { tone: 'idle', text: 'ממתין לחלוקה' };
+}
+
+function updateStatusLine(now) {
+  const status = watchStatus(now);
+  if (status) {
+    for (const node of document.querySelectorAll('[data-scan-status]')) {
+      if (node.textContent !== status.text) node.textContent = status.text;
+      const dot = node.parentElement?.querySelector('.scan-dot');
+      if (dot) dot.className = `scan-dot is-${status.tone}`;
+    }
+  }
+
+  const trouble = readingTrouble(now);
+  for (const node of document.querySelectorAll('[data-scan-trouble]')) {
+    if (trouble && node.textContent !== trouble) node.textContent = trouble;
+    node.hidden = !trouble;
+  }
+}
+
+function renderDockStatus() {
+  updateStatusLine(performance.now());
+}
+
+/**
+ * The camera's place in the round view, whether or not a hand is open: the way
+ * in when it is off, and while it runs in the background, what it is seeing,
+ * what it just did, and a way out of both.
+ */
+function renderCameraPanel() {
+  if (!scanner) {
+    const off = el('div', 'panel camera-dock');
+    const row = el('div', 'camera-dock-actions');
+    const watch = el('button', 'btn btn-ghost', 'מצב שולחן — מצלמה פתוחה כל הערב');
+    watch.type = 'button';
+    watch.dataset.action = 'scan-table';
+    row.append(watch);
+    off.append(row);
+    return off;
+  }
+  if (!scanner.docked) {
+    const open = el('div', 'panel camera-dock');
+    const row = el('div', 'camera-dock-actions');
+    const back = el('button', 'btn btn-ghost', 'חזרה למצלמה');
+    back.type = 'button';
+    back.dataset.action = 'scan-open';
+    row.append(back);
+    open.append(row);
+    return open;
+  }
+  const status = watchStatus();
+  const dock = el('div', 'panel camera-dock');
+
+  const head = el('div', 'camera-dock-head');
+  const live = el('span', 'camera-dock-status');
+  live.append(el('i', `scan-dot is-${status?.tone ?? 'idle'}`));
+  const text = el('span', null, status?.text ?? '');
+  text.dataset.scanStatus = 'dock';
+  live.append(text);
+  head.append(live);
+  dock.append(head);
+
+  const preview = el('div', 'camera-dock-preview');
+  preview.append(scanner.canvas); // the same canvas the loop draws into
+  dock.append(preview);
+
+  const trouble = el('p', 'scanner-message');
+  trouble.dataset.scanTrouble = 'dock';
+  trouble.hidden = true;
+  dock.append(trouble);
+
+  if (scanner.lastAuto?.labels?.length && scanner.lastAuto.hand === currentHand()?.n) {
+    const undo = el('div', 'camera-dock-undo');
+    undo.append(el('span', null, `נוסף: ${scanner.lastAuto.labels.map(prettyCard).join(' ')}`));
+    const button = el('button', 'btn btn-ghost', 'בטל');
+    button.type = 'button';
+    button.dataset.action = 'scanner-undo';
+    undo.append(button);
+    dock.append(undo);
+  }
+
+  const actionsRow = el('div', 'camera-dock-actions');
+  const open = el('button', 'btn btn-ghost', 'פתח מצלמה');
+  open.type = 'button';
+  open.dataset.action = 'scan-open';
+  actionsRow.append(open);
+  const off = el('button', 'btn btn-ghost', 'כבה מצלמה');
+  off.type = 'button';
+  off.dataset.action = 'scanner-stop';
+  actionsRow.append(off);
+  dock.append(actionsRow);
+  return dock;
+}
+
+/* -------------------------------------------------------------- the panel */
 
 function renderScanner() {
-  if (!scanner) return;
+  if (!scanner?.body) return;
   const body = scanner.body;
   body.textContent = '';
 
   const head = el('div', 'scanner-head');
-  head.append(el('strong', null, scanner.mode === 'learn' ? 'לימוד החפיסה' : 'סריקת קלפים'));
-  const close = el('button', 'btn btn-ghost', 'סגור');
+  head.append(el('strong', null, scanner.panel === 'learn' ? 'לימוד החפיסה' : 'מצלמת השולחן'));
+  const close = el('button', 'btn btn-ghost', scanner.mode === 'table' ? 'מזער' : 'סגור');
   close.type = 'button';
-  close.dataset.action = 'scanner-close';
+  close.dataset.action = scanner.mode === 'table' ? 'scanner-dock' : 'scanner-stop';
   head.append(close);
   body.append(head);
 
@@ -2017,16 +2485,65 @@ function renderScanner() {
   }
   if (scanner.message) body.append(el('p', 'scanner-message', scanner.message));
 
-  if (scanner.mode === 'learn') renderLearnPanel(body);
+  if (scanner.panel === 'learn') renderLearnPanel(body);
   else renderScanPanel(body);
 }
 
 function renderScanPanel(body) {
-  const learned = learnedCount();
-  if (scanner.starting) {
-    body.append(el('p', 'scanner-hint', 'מבקש גישה למצלמה…'));
+  const status = watchStatus();
+  const line = el('div', 'scanner-status');
+  line.append(el('i', `scan-dot is-${status?.tone ?? 'idle'}`));
+  const text = el('span', null, status?.text ?? '');
+  text.dataset.scanStatus = 'panel';
+  line.append(text);
+  body.append(line);
+
+  const toggle = el('label', 'scanner-toggle');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = scanner.mode === 'table';
+  input.dataset.action = 'scanner-table-mode';
+  toggle.append(input);
+  toggle.append(
+    el(
+      'span',
+      null,
+      'מצב שולחן — להשאיר את המצלמה פתוחה ולנהל את הסיבובים לבד'
+    )
+  );
+  body.append(toggle);
+
+  if (scanner.starting) return;
+
+  if (scanner.mode === 'table') {
+    body.append(
+      el(
+        'p',
+        'scanner-hint',
+        'הנח את הטלפון כך שיראה את אזור הקלפים המשותפים. קלפים חדשים ייכנסו ללוח לבד, ' +
+          'וכשהשולחן יתפנה היד תיסגר ותישאל רק שאלה אחת: מי לקח.'
+      )
+    );
+    const troubleLine = el('p', 'scanner-message');
+    troubleLine.dataset.scanTrouble = 'table';
+    troubleLine.hidden = true;
+    body.append(troubleLine);
+
+    const actionsRow = el('div', 'scanner-actions');
+    const dock = el('button', 'btn btn-primary btn-lg', 'מזער והמשך לשחק');
+    dock.type = 'button';
+    dock.dataset.action = 'scanner-dock';
+    actionsRow.append(dock);
+    actionsRow.append(learnButton());
+    const off = el('button', 'btn btn-ghost', 'כבה מצלמה');
+    off.type = 'button';
+    off.dataset.action = 'scanner-stop';
+    actionsRow.append(off);
+    body.append(actionsRow);
     return;
   }
+
+  const learned = learnedCount();
   body.append(
     el(
       'p',
@@ -2036,6 +2553,11 @@ function renderScanPanel(body) {
         : 'כוון את המצלמה לקלפים. לדיוק גבוה יותר כדאי ללמד את החפיסה שלך פעם אחת.'
     )
   );
+
+  const trouble = el('p', 'scanner-message');
+  trouble.dataset.scanTrouble = 'panel';
+  trouble.hidden = true;
+  body.append(trouble);
 
   const cards = el('div', 'scanner-cards');
   if (scanner.proposal.length === 0) {
@@ -2057,7 +2579,7 @@ function renderScanPanel(body) {
     body.append(el('span', 'scanner-note', 'הקשה על קלף מסירה אותו מהרשימה'));
   }
 
-  const actions = el('div', 'scanner-actions');
+  const actionsRow = el('div', 'scanner-actions');
   const add = el(
     'button',
     'btn btn-primary btn-lg',
@@ -2066,13 +2588,17 @@ function renderScanPanel(body) {
   add.type = 'button';
   add.dataset.action = 'scanner-add';
   add.disabled = scanner.proposal.length === 0;
-  actions.append(add);
+  actionsRow.append(add);
+  actionsRow.append(learnButton());
+  body.append(actionsRow);
+}
 
+function learnButton() {
+  const learned = learnedCount();
   const learn = el('button', 'btn btn-ghost', learned >= 17 ? 'למד מחדש' : `למד את החפיסה (${learned}/17)`);
   learn.type = 'button';
   learn.dataset.action = 'scanner-learn';
-  actions.append(learn);
-  body.append(actions);
+  return learn;
 }
 
 function renderLearnPanel(body) {
@@ -2089,27 +2615,27 @@ function renderLearnPanel(body) {
   body.append(el('p', 'scanner-hint', `${task.hint} — קרוב, שטוח ומואר, ואז צלם.`));
   body.append(el('span', 'scanner-note', `${scanner.taskIndex + 1} מתוך ${scanner.tasks.length}`));
 
-  const actions = el('div', 'scanner-actions');
+  const actionsRow = el('div', 'scanner-actions');
   const capture = el('button', 'btn btn-primary btn-lg', 'צלם');
   capture.type = 'button';
   capture.dataset.action = 'scanner-capture';
-  actions.append(capture);
+  actionsRow.append(capture);
 
   const skip = el('button', 'btn btn-ghost', 'דלג');
   skip.type = 'button';
   skip.dataset.action = 'scanner-skip';
-  actions.append(skip);
+  actionsRow.append(skip);
 
   const back = el('button', 'btn btn-ghost', 'חזרה לסריקה');
   back.type = 'button';
   back.dataset.action = 'scanner-scan-mode';
-  actions.append(back);
+  actionsRow.append(back);
 
   const forget = el('button', 'btn btn-ghost', 'מחק למידה');
   forget.type = 'button';
   forget.dataset.action = 'scanner-forget';
-  actions.append(forget);
-  body.append(actions);
+  actionsRow.append(forget);
+  body.append(actionsRow);
 }
 
 /* ------------------------------------------------------------- committing */
@@ -2140,7 +2666,7 @@ function addCardsToBoard(labels) {
 function commitScannedCards() {
   if (!scanner) return;
   if (!currentHand()) {
-    scanner.message = 'אין יד פתוחה - התחל יד ואז סרוק.';
+    scanner.message = 'אין סיבוב פתוח - פתח סיבוב ואז סרוק.';
     renderScanner();
     return;
   }
@@ -2148,6 +2674,20 @@ function commitScannedCards() {
   closeScanner();
   if (added === 0) toast('הקלפים כבר על הלוח');
   else toast(added === 1 ? 'קלף נוסף ללוח' : `${added} קלפים נוספו ללוח`);
+}
+
+/** Take back what the camera put on the board, if the hand is still the same. */
+function undoAutoCards() {
+  const hand = currentHand();
+  if (!scanner?.lastAuto || !hand || scanner.lastAuto.hand !== hand.n) return;
+  for (const label of scanner.lastAuto.labels) {
+    const index = hand.board.indexOf(label);
+    if (index !== -1) hand.board[index] = undefined;
+    scanner.watch.seen.delete(label); // so it can be read again
+  }
+  scanner.lastAuto = null;
+  commit();
+  toast('הקלפים הוסרו');
 }
 
 /* --------------------------------------------------------------- learning */
@@ -2180,22 +2720,43 @@ function nextTask() {
   scanner.taskIndex++;
   scanner.message = null;
   if (scanner.taskIndex >= scanner.tasks.length) {
-    scanner.mode = 'scan';
+    scanner.panel = 'scan';
     scanner.tracker.reset();
     toast('החפיסה נלמדה');
   }
   renderScanner();
 }
 
+/* ----------------------------------------------------------- interruptions */
+
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && scanner) closeScanner();
+  if (event.key !== 'Escape' || !scanner) return;
+  if (scanner.mode === 'table' && scanner.overlay) dockScanner();
+  else closeScanner();
 });
 
-// A camera left running in the background is a battery and a privacy problem.
-window.addEventListener('pagehide', closeScanner);
+// A camera left running in the background is a battery and a privacy problem,
+// but a glance at another app should not end the evening: processing pauses
+// and picks up again, and only leaving the page for good stops the camera.
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) closeScanner();
+  if (!scanner) return;
+  if (document.hidden) {
+    scanner.paused = true;
+    releaseScreen();
+    return;
+  }
+  scanner.paused = false;
+  scanner.lastThumb = null; // the table may have changed while we were away
+  if (scanner.mode === 'table') keepScreenAwake();
+  if (scanner.stream && scanner.stream.getTracks().every((track) => track.readyState === 'ended')) {
+    // The browser took the camera back while the app was in the background.
+    const wantedTable = scanner.mode === 'table';
+    closeScanner();
+    openScanner({ table: wantedTable });
+  }
 });
+
+window.addEventListener('pagehide', closeScanner);
 
 /* ==========================================================================
    Start

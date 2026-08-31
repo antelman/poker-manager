@@ -12,6 +12,7 @@
  * which localStorage will not notice.
  */
 
+import { KNOWN_DECK } from './known-deck.js';
 import {
   CARD_RANKS,
   CARD_SUITS,
@@ -30,11 +31,19 @@ const SUIT_GLYPH = { s: '♠︎', h: '♥︎', d: '♦︎', c: '♣︎' };
 const SYMBOL_SIZE = { ranks: [RANK_W, RANK_H], suits: [SUIT_W, SUIT_H] };
 
 /**
+ * The face the drawn glyphs are rendered in. Drawing each glyph in several
+ * faces was tried against a real deck and a printed one and changed nothing
+ * that could be measured: a blurred serif K still loses to a digit. What
+ * actually fixes a stubborn deck is teaching it.
+ */
+const INDEX_FONT = 'bold 150px "Helvetica Neue", Helvetica, Arial, sans-serif';
+
+/**
  * Rasterise one glyph and normalise it exactly like a symbol read off a card.
  * The text is drawn as large as its box allows, since only the shape survives
  * the crop-and-scale that follows.
  */
-export function renderGlyph(text, outW, outH) {
+export function renderGlyph(text, outW, outH, font = INDEX_FONT) {
   if (typeof document === 'undefined') return null;
   const width = 160;
   const height = 220;
@@ -49,7 +58,7 @@ export function renderGlyph(text, outW, outH) {
   context.fillStyle = '#000';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.font = `bold 150px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  context.font = font;
   context.fillText(text, width / 2, height / 2, width * 0.9);
 
   const { data } = context.getImageData(0, 0, width, height);
@@ -58,6 +67,26 @@ export function renderGlyph(text, outW, outH) {
     ink[i] = data[p] < 128 ? 1 : 0;
   }
   return symbolFromInk(ink, width, height, outW, outH);
+}
+
+/** The templates for the deck that ships with the app, unpacked once. */
+let known = null;
+function knownTemplates() {
+  if (known) return known;
+  known = { ranks: {}, suits: {} };
+  for (const kind of ['ranks', 'suits']) {
+    const [w, h] = SYMBOL_SIZE[kind];
+    for (const [label, entry] of Object.entries(KNOWN_DECK[kind])) {
+      if (entry.width !== w || entry.height !== h) continue;
+      known[kind][label] = {
+        bits: unpackBits(entry.bits, w * h),
+        width: w,
+        height: h,
+        aspect: entry.aspect,
+      };
+    }
+  }
+  return known;
 }
 
 let drawn = null;
@@ -115,11 +144,25 @@ function decodeSymbol(entry, outW, outH) {
 export function loadDeck() {
   const store = readStore();
   const deck = { ranks: { ...drawnTemplates().ranks }, suits: { ...drawnTemplates().suits } };
+  // The real deck's own corners, offered next to the drawn guesses under the
+  // same names - the matcher takes whichever fits, and reports the card either
+  // way.
+  for (const kind of ['ranks', 'suits']) {
+    for (const [label, symbol] of Object.entries(knownTemplates()[kind])) {
+      deck[kind][`${label}#deck`] = symbol;
+    }
+  }
   for (const kind of ['ranks', 'suits']) {
     const [w, h] = SYMBOL_SIZE[kind];
     for (const [label, entry] of Object.entries(store[kind] || {})) {
       const symbol = decodeSymbol(entry, w, h);
-      if (symbol) deck[kind][label] = symbol;
+      if (!symbol) continue;
+      // A card taught from the real deck replaces every guess at it: the drawn
+      // faces are only there for a deck nobody has shown the app.
+      for (const key of Object.keys(deck[kind])) {
+        if (key === label || key.startsWith(`${label}#`)) delete deck[kind][key];
+      }
+      deck[kind][label] = symbol;
     }
   }
   return deck;

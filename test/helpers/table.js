@@ -211,6 +211,60 @@ export function place(table, card, corners) {
   return table;
 }
 
+/**
+ * A box blur, standing in for a camera that is not quite in focus - which is
+ * the normal state of a phone propped up over a table.
+ */
+export function blur(image, radius) {
+  const { width, height } = image;
+  const data = new Uint8ClampedArray(image.data);
+  const source = image.data;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        const sy = y + dy;
+        if (sy < 0 || sy >= height) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const sx = x + dx;
+          if (sx < 0 || sx >= width) continue;
+          const i = (sy * width + sx) * 4;
+          r += source[i]; g += source[i + 1]; b += source[i + 2]; n++;
+        }
+      }
+      const o = (y * width + x) * 4;
+      data[o] = r / n; data[o + 1] = g / n; data[o + 2] = b / n; data[o + 3] = 255;
+    }
+  }
+  return { data, width, height };
+}
+
+/**
+ * Shrink an image by an integer factor, averaging - what a camera frame scaled
+ * down for detection looks like, and how the detail a corner index needs gets
+ * thrown away.
+ */
+export function downscale(image, factor) {
+  const width = Math.floor(image.width / factor);
+  const height = Math.floor(image.height / factor);
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let r = 0, g = 0, b = 0;
+      for (let dy = 0; dy < factor; dy++) {
+        for (let dx = 0; dx < factor; dx++) {
+          const i = ((y * factor + dy) * image.width + x * factor + dx) * 4;
+          r += image.data[i]; g += image.data[i + 1]; b += image.data[i + 2];
+        }
+      }
+      const n = factor * factor;
+      const o = (y * width + x) * 4;
+      data[o] = r / n; data[o + 1] = g / n; data[o + 2] = b / n; data[o + 3] = 255;
+    }
+  }
+  return { data, width, height };
+}
+
 export const rect = (x, y, w, h) => [
   { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h },
 ];
