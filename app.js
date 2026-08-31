@@ -2208,8 +2208,9 @@ function scanFrame(now) {
     scanner.detections = scanner.reader.read(frame.data, width, height, {
       detail: detailCrop(video, width),
     });
-    scanner.occupied = scanner.detections.length > 0;
-    noteReading(now, width);
+    const cards = cardSized(scanner.detections, width);
+    scanner.occupied = cards.length > 0;
+    noteReading(now, width, cards);
     collect(now);
   } else if (scanner.mode === 'table') {
     // Nothing moved, so the last reading still stands - keep the clock running.
@@ -2263,20 +2264,68 @@ function detailCrop(video, frameWidth) {
   };
 }
 
+/** How wide this outline is, as a fraction of the frame. */
+function widthFraction(card, frameWidth) {
+  return Math.hypot(card.quad[1].x - card.quad[0].x, card.quad[1].y - card.quad[0].y) / frameWidth;
+}
+
+/**
+ * The narrowest an outline can be and still be a card - used only until the
+ * camera has seen a card it could read, after which the real ones set the
+ * scale.
+ */
+const MIN_CARD_FRAC = 0.07;
+
+/** How long a card that was read stands as the yardstick for card size. */
+const SCALE_TTL = 20000;
+
+/**
+ * The outlines big enough to be cards on this table.
+ *
+ * Everything that is white-ish and roughly rectangular gets outlined, and on a
+ * wooden table that includes a grain, a chip edge or a sleeve every few
+ * seconds. Those flickers are what kept a cleared table looking occupied, so a
+ * round that was over never closed. Once the camera has read a card from where
+ * it stands, it knows how big a card is from here, and anything half that size
+ * is not one.
+ */
+function cardSized(cards, frameWidth) {
+  return cards.filter((card) => widthFraction(card, frameWidth) >= cardFloor());
+}
+
+/**
+ * How big a thing has to be to count as a card right now.
+ *
+ * The yardstick is only trusted while it is fresh: move the phone higher and
+ * the cards get smaller, and a stale yardstick from when it was closer would
+ * declare a table full of cards empty. If nothing has been read for a while,
+ * the floor goes back to the absolute minimum and the camera works it out
+ * again from what it sees.
+ */
+function cardFloor() {
+  const fresh = performance.now() - (scanner.cardScaleAt ?? -Infinity) < SCALE_TTL;
+  return Math.max(MIN_CARD_FRAC, fresh ? scanner.cardScale * 0.5 : 0);
+}
+
 /**
  * Keep track of what the reader is managing, so the panel can say why nothing
  * is being read instead of leaving the dealer staring at outlines.
  */
-function noteReading(now, frameWidth) {
-  const cards = scanner.detections;
+function noteReading(now, frameWidth, cards) {
   if (cards.length === 0) return;
   scanner.sawCardsAt = now;
-  if (cards.some((card) => card.label)) scanner.readCardsAt = now;
 
-  const widths = cards
-    .map((card) => Math.hypot(card.quad[1].x - card.quad[0].x, card.quad[1].y - card.quad[0].y))
-    .sort((a, b) => a - b);
-  scanner.cardWidth = widths[widths.length >> 1] / frameWidth;
+  const widths = cards.map((card) => widthFraction(card, frameWidth)).sort((a, b) => a - b);
+  scanner.cardWidth = widths[widths.length >> 1];
+
+  // A card that was actually read is the yardstick for what a card looks like
+  // from where the phone is standing.
+  const read = cards.filter((card) => card.label);
+  if (read.length === 0) return;
+  scanner.readCardsAt = now;
+  const scale = read.map((card) => widthFraction(card, frameWidth)).sort((a, b) => a - b);
+  scanner.cardScale = scale[scale.length >> 1];
+  scanner.cardScaleAt = now;
 }
 
 /** One line on why cards are being seen but not read, or nothing. */
@@ -2383,7 +2432,9 @@ function drawScannerOverlay(context) {
   context.lineWidth = 3;
   context.font = 'bold 22px system-ui, sans-serif';
   context.textBaseline = 'bottom';
-  for (const card of scanner.detections) {
+  // Only what counts as a card is drawn as one: outlining specks the app has
+  // already decided to ignore would say the opposite of what it is doing.
+  for (const card of cardSized(scanner.detections, context.canvas.width)) {
     const known = Boolean(card.label);
     context.strokeStyle = known ? '#4ade80' : '#facc15';
     context.beginPath();

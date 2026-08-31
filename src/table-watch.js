@@ -9,9 +9,11 @@
  *
  * The whole job here is refusing to react to a moment. A hand reaching over
  * the cards, a phone knocked sideways, a player squaring up the board: all of
- * them make cards vanish for a fraction of a second. So arrivals and
- * departures both have to hold for a while before they mean anything, and a
- * countdown that has started is cancelled the moment a card comes back.
+ * them make cards vanish for a fraction of a second - and the grain of a
+ * wooden table flickers into a card-shaped blob just as briefly. So arrivals
+ * and departures both have to hold for a while before they mean anything, in
+ * both directions: a countdown is cancelled by a card that is read, or by a
+ * shape that stays, never by a shape that comes and goes.
  *
  * Pure and clock-free: it is fed `now` and what the frame showed, and it
  * answers with events. `app.js` decides what those events do to the game.
@@ -24,6 +26,17 @@ export const WATCH_DEFAULTS = {
   clearMs: 3500,
   /** A blip of emptiness shorter than this is never even shown. */
   graceMs: 700,
+  /**
+   * And the other way round: how long something has to be back on the table
+   * before a countdown that has already started is called off.
+   *
+   * Without this, one flicker cancels the whole thing - and on a wooden table
+   * a grain, a sleeve or a chip edge flickers into a card-shaped blob every
+   * few seconds, so a round that was cleared minutes ago never closes. A card
+   * actually read still cancels the countdown at once; this is only about
+   * shapes nobody could name.
+   */
+  returnMs: 700,
 };
 
 export const WATCHING = 'waiting';
@@ -36,6 +49,7 @@ export class TableWatch {
     this.state = WATCHING;
     this.occupiedSince = null;
     this.emptySince = null;
+    this.backSince = null;
     this.announcedClearing = false;
     this.seen = new Set();
   }
@@ -52,7 +66,7 @@ export class TableWatch {
    */
   update({ now, occupied, labels = [] }) {
     const events = [];
-    const { dealMs, clearMs, graceMs } = this.options;
+    const { dealMs, clearMs, graceMs, returnMs } = this.options;
 
     if (this.state === WATCHING) {
       if (!occupied) {
@@ -70,14 +84,26 @@ export class TableWatch {
     }
 
     if (this.state === LIVE || this.state === CLEARING) {
-      if (occupied) {
+      // Something is on the table again - but during a countdown, only if it
+      // stays there, or if it is a card the reader can actually name.
+      let inPlay = occupied;
+      if (occupied && this.state === CLEARING) {
+        if (this.backSince === null) this.backSince = now;
+        inPlay = labels.some(Boolean) || now - this.backSince >= returnMs;
+      }
+
+      if (inPlay) {
         if (this.state === CLEARING) {
           this.state = LIVE;
           if (this.announcedClearing) events.push({ type: 'settled', at: now });
           this.announcedClearing = false;
         }
         this.emptySince = null;
+        this.backSince = null;
       } else {
+        if (!occupied) this.backSince = null;
+        // The clock keeps the time it has already counted: a blip in the
+        // middle of a countdown neither cancels it nor extends it.
         if (this.emptySince === null) this.emptySince = now;
         this.state = CLEARING;
         const empty = now - this.emptySince;
@@ -89,6 +115,7 @@ export class TableWatch {
           this.state = WATCHING;
           this.occupiedSince = null;
           this.emptySince = null;
+          this.backSince = null;
           this.announcedClearing = false;
           this.seen.clear();
           events.push({ type: 'handEnd', at: now });
@@ -121,6 +148,7 @@ export class TableWatch {
     this.state = state;
     this.occupiedSince = null;
     this.emptySince = null;
+    this.backSince = null;
     this.announcedClearing = false;
     this.seen.clear();
   }

@@ -35,6 +35,55 @@ test('a deal opens a hand, but only once it holds', () => {
   assert.equal(watch.state, LIVE);
 });
 
+test('a speck flickering on an empty table does not stop the round closing', () => {
+  // The wooden table the app is actually used on: every couple of seconds the
+  // grain, a chip edge or a sleeve outlines as something card-shaped for a
+  // frame or two. Before, each of those cancelled the countdown and the round
+  // stayed open all evening.
+  const watch = new TableWatch({ dealMs: 500, clearMs: 3000, graceMs: 300, returnMs: 700 });
+  play(watch, occupied(10, ['As']));
+  assert.equal(watch.state, LIVE);
+
+  const blips = [];
+  for (let i = 0; i < 5; i++) blips.push(...empty(8), ...occupied(2));
+  const { events } = play(watch, blips);
+  assert.ok(types(events).includes('handEnd'), `never closed: ${types(events).join()}`);
+  assert.equal(watch.state, WATCHING);
+});
+
+test('a countdown keeps the time it has counted through a blip', () => {
+  const watch = new TableWatch({ dealMs: 500, clearMs: 2000, graceMs: 300, returnMs: 700 });
+  play(watch, occupied(10, ['As']));
+  const run = play(watch, [...empty(15), ...occupied(2), ...empty(4)]);
+  // 1.5s empty, a 0.2s blip, 0.4s more: the blip neither cancelled the
+  // countdown nor pushed the close out past its two seconds.
+  assert.ok(types(run.events).includes('handEnd'));
+});
+
+test('cards really coming back call the countdown off at once', () => {
+  const watch = new TableWatch({ dealMs: 500, clearMs: 3000, graceMs: 300, returnMs: 700 });
+  play(watch, occupied(10, ['As']));
+  const gone = play(watch, empty(8));
+  assert.deepEqual(types(gone.events), ['clearing']);
+  // One frame with a card that was actually read is enough.
+  const back = play(watch, occupied(1, ['Kh']), gone.now);
+  assert.deepEqual(types(back.events), ['settled', 'cards']);
+  assert.equal(watch.state, LIVE);
+});
+
+test('a shape that stays also calls it off, once it has stayed', () => {
+  const watch = new TableWatch({ dealMs: 500, clearMs: 5000, graceMs: 300, returnMs: 700 });
+  play(watch, occupied(10, ['As']));
+  const gone = play(watch, empty(8));
+  assert.deepEqual(types(gone.events), ['clearing']);
+  const brief = play(watch, occupied(3), gone.now); // 0.3s - not yet
+  assert.deepEqual(types(brief.events), []);
+  assert.equal(watch.state, CLEARING);
+  const held = play(watch, occupied(6), brief.now); // now it has stayed
+  assert.deepEqual(types(held.events), ['settled']);
+  assert.equal(watch.state, LIVE);
+});
+
 test('a card passing through the frame is not a deal', () => {
   const watch = new TableWatch({ dealMs: 1000 });
   const { events } = play(watch, [...occupied(6), ...empty(2), ...occupied(6)]);
