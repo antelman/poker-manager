@@ -37,6 +37,14 @@
     <path d="M3.2 10.4A9 9 0 1 1 3 12.7"/><path d="M3 4.6v5.8h5.6"/>
     <path d="M12 7.6V12l3.4 2"/>
   </symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24">
+    <path d="M14 4h6v6M20 4l-7 7"/>
+    <path d="M10 20H4v-6M4 20l7-7"/>
+  </symbol>
+  <symbol id="i-collapse" viewBox="0 0 24 24">
+    <path d="M20 10h-6V4M14 10l6-6"/>
+    <path d="M4 14h6v6M10 14l-6 6"/>
+  </symbol>
   <symbol id="i-cards" viewBox="0 0 24 24">
     <rect x="8.5" y="4" width="11" height="15" rx="2"/>
     <path d="M6 6.6 4.7 7A2 2 0 0 0 3.4 9.5l2.4 8.7A2 2 0 0 0 8.3 19.6l1.3-.4"/>
@@ -165,9 +173,15 @@
     <h2 class="board-heading">
       <span class="board-heading-text">הסיבוב</span>
       <!-- What a tap on the felt does: open the picker, or open the camera. -->
-      <span class="mode-toggle" id="roundMode" role="group" aria-label="דרך הזנת הקלפים">
-        <button type="button" class="mode-btn" data-action="round-input" data-mode="manual">ידני</button>
-        <button type="button" class="mode-btn" data-action="round-input" data-mode="camera">מצלמה</button>
+      <span class="head-tools">
+        <span class="mode-toggle" id="roundMode" role="group" aria-label="דרך הזנת הקלפים">
+          <button type="button" class="mode-btn" data-action="round-input" data-mode="manual">ידני</button>
+          <button type="button" class="mode-btn" data-action="round-input" data-mode="camera">מצלמה</button>
+        </span>
+        <!-- Gives the table the whole board when the cell it sits in is too small. -->
+        <button type="button" class="expand-btn" id="tableExpand" data-action="toggle-table-size">
+          <svg class="expand-icon" aria-hidden="true"><use href="#i-expand"/></svg>
+        </button>
       </span>
     </h2>
     <div id="roundContent"></div>

@@ -329,6 +329,29 @@ svg[class*="icon"] {
   }
 }
 
+/* ---- the round's title-row tools ---- */
+
+.head-tools { display: inline-flex; align-items: center; gap: 7px; flex: none; }
+
+.expand-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+
+.expand-btn:hover { color: var(--brass); }
+.expand-btn[aria-pressed="true"] { background: var(--brass); border-color: var(--brass-strong); color: var(--on-brass); }
+.expand-icon { width: 17px; height: 17px; }
+
 /* ---- manual / camera ---- */
 
 .mode-toggle {
@@ -931,7 +954,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   #main {
     flex: 1;
     min-height: 0;
+    /* The board is full bleed, and an auto side margin would stop the flex
+       item stretching - which leaves the grid as narrow as its content. */
     max-width: none;
+    margin: 0;
     display: grid;
     gap: clamp(10px, .9vw, 18px);
     padding: clamp(10px, .9vw, 18px) clamp(16px, 1.8vw, 30px) clamp(14px, 1.2vw, 22px);
@@ -1235,6 +1261,102 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .rank-btn:active, .suit-btn:active { transform: scale(.95); }
 
 /* ---- seating ---- */
+
+/* ==========================================================================
+   The table, expanded
+   The felt gets the whole window instead of the one cell it shares the board
+   with. The oval stops holding a fixed ratio and simply fills what it is
+   given - the seats are placed on percentages, so everything on it grows
+   with it - bounded so it never reads as a stripe or as a circle.
+   ========================================================================== */
+
+#main.is-table-expanded .view-round { display: flex; flex-direction: column; }
+
+#main.is-table-expanded #roundContent {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* No card under the felt: at this size the table is the panel. */
+#main.is-table-expanded .table-panel {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  container-type: inline-size;
+}
+
+/* Height is whatever the window has left; the width follows from it at the
+   two-to-one a real nine-seat table is built to, and only gives that up on a
+   phone, where there is no width to spare and the oval goes round instead. */
+#main.is-table-expanded .poker-table {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: 2 / 1;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* The felt grew; the things on it should not grow with it without limit. */
+#main.is-table-expanded .table-center { max-width: 600px; }
+#main.is-table-expanded .board-card { max-width: 92px; }
+#main.is-table-expanded .table-seat { width: clamp(64px, 17cqw, 150px); }
+#main.is-table-expanded .seat-avatar { width: clamp(30px, 7.4cqw, 64px); height: clamp(30px, 7.4cqw, 64px); font-size: clamp(.85rem, 2.6cqw, 1.7rem); }
+#main.is-table-expanded .seat-name { font-size: clamp(.63rem, 1.7cqw, 1.05rem); }
+#main.is-table-expanded .seat-stack { font-size: clamp(.56rem, 1.5cqw, .95rem); }
+
+/* One line for the street and the button that ends the round, so the felt
+   keeps the height they would otherwise take. */
+@media (min-width: 700px) {
+  #main.is-table-expanded .felt {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #main.is-table-expanded .felt .street-row { flex: 1; }
+
+  #main.is-table-expanded .felt > .btn {
+    width: auto;
+    flex: none;
+    min-width: 200px;
+  }
+}
+
+/* On the board the round takes every column, and the other panels stand down. */
+@media (min-width: 1040px) {
+  #main.is-table-expanded {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "round";
+  }
+
+  #main.is-table-expanded > .view:not(.view-round) { display: none !important; }
+}
+
+/* On a phone it takes the window above the rail, so the top bar's band of
+   felt becomes table instead. The rail stays put - switching screens is the
+   way back out, along with the button itself. */
+@media (max-width: 1039px) {
+  #main.is-table-expanded .view-round {
+    position: fixed;
+    top: 0;
+    inset-inline: 0;
+    bottom: calc(var(--rail-h) + env(safe-area-inset-bottom));
+    z-index: 25;
+    margin: 0;
+    padding: calc(env(safe-area-inset-top) + 8px) var(--pad) var(--pad);
+    background: var(--bg);
+    overflow-y: auto;
+    gap: 8px;
+  }
+}
 
 /* ==========================================================================
    The table

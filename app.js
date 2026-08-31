@@ -808,6 +808,10 @@ const actions = {
     setRoundInput(target.dataset.mode);
   },
 
+  'toggle-table-size'() {
+    setTableSize(!tableExpanded);
+  },
+
   'start-hand'() {
     const last = state.game.hand?.n ?? 0;
     state.game.hand = newHand(last + 1);
@@ -1217,6 +1221,39 @@ let pickedSeat = null; // the chair a player has been lifted off, while reseatin
 const ROUND_INPUT_KEY = 'poker-manager:round-input';
 let roundInput = 'manual';
 
+/**
+ * The round shares the board with four other panels, which leaves the felt
+ * about a third of the window. Expanding hands the whole board to the table
+ * for the hands where people are actually looking at it. Also a per-device
+ * preference: one player can have the table full-screen while another has
+ * the ledger up.
+ */
+const TABLE_SIZE_KEY = 'poker-manager:table-size';
+let tableExpanded = false;
+
+function applyTableSize() {
+  const main = $('main');
+  if (main) main.classList.toggle('is-table-expanded', tableExpanded);
+
+  const btn = $('tableExpand');
+  if (!btn) return;
+  btn.setAttribute('aria-pressed', String(tableExpanded));
+  btn.setAttribute('aria-label', tableExpanded ? 'הקטן את השולחן' : 'הגדל את השולחן');
+  btn.title = tableExpanded ? 'הקטן את השולחן' : 'הגדל את השולחן';
+  const use = btn.querySelector('use');
+  if (use) use.setAttribute('href', tableExpanded ? '#i-collapse' : '#i-expand');
+}
+
+function setTableSize(expanded) {
+  tableExpanded = Boolean(expanded);
+  try {
+    localStorage.setItem(TABLE_SIZE_KEY, tableExpanded ? 'big' : 'small');
+  } catch {
+    // Not remembering the choice is not worth failing over.
+  }
+  applyTableSize();
+}
+
 function setRoundInput(mode) {
   roundInput = mode === 'camera' ? 'camera' : 'manual';
   try {
@@ -1231,9 +1268,11 @@ function initRoundInput() {
   try {
     const stored = localStorage.getItem(ROUND_INPUT_KEY);
     if (stored === 'camera' || stored === 'manual') roundInput = stored;
+    tableExpanded = localStorage.getItem(TABLE_SIZE_KEY) === 'big';
   } catch {
-    // Storage is off; the default stands for this session.
+    // Storage is off; the defaults stand for this session.
   }
+  applyTableSize();
 }
 
 function closePicker() {
@@ -1510,6 +1549,8 @@ function renderTable(hand) {
 
 /** Paint the manual/camera toggle that lives at the end of the title row. */
 function renderRoundMode() {
+  applyTableSize();
+
   for (const btn of document.querySelectorAll('#roundMode .mode-btn')) {
     const on = btn.dataset.mode === roundInput;
     btn.classList.toggle('is-active', on);
