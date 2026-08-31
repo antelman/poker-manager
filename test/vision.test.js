@@ -20,6 +20,7 @@ import {
   RED_SUITS,
   BLACK_SUITS,
 } from '../src/vision.js';
+import { KNOWN_DECK } from '../src/known-deck.js';
 
 import { table, tilt, rect, place, renderCard, createImage, fillCircle, fillRect, downscale, blur, FELT, WHITE } from './helpers/table.js';
 
@@ -229,6 +230,68 @@ test('a real deck is read right, even where the app will not commit to it', () =
     assert.equal(`${rank.label}${suit.label}`, card.label);
     assert.ok(rank.margin > 0 && suit.margin > 0, `${card.label} did not win outright`);
   }
+});
+
+/**
+ * The deck that ships with the app, which is eleven of the thirteen ranks: the
+ * 4 and the 5 were not in any photograph of the deck, so the app has never
+ * seen one. What it must not do is call them something else.
+ */
+function provenRanks(skip = null) {
+  const ranks = {};
+  for (const [label, entry] of Object.entries(KNOWN_DECK.ranks)) {
+    if (label === skip) continue;
+    ranks[label] = {
+      bits: unpackBits(entry.bits, entry.width * entry.height),
+      width: entry.width,
+      height: entry.height,
+      aspect: entry.aspect,
+      proven: true,
+    };
+  }
+  return ranks;
+}
+
+test('a rank with no real template of its own does not win by enough to be named', () => {
+  const { cards } = realDeck();
+  for (const card of cards) {
+    const rank = card.label.slice(0, -1);
+    const own = matchSymbol(card.rank, provenRanks());
+    assert.equal(own.label, rank);
+    assert.ok(own.proven, `${card.label} was not matched against the real deck`);
+    assert.ok(
+      own.margin >= DEFAULTS.provenMargin,
+      `a ${card.label} with its own template won by only ${own.margin.toFixed(3)}`
+    );
+
+    // Now take that rank's template away, which is the 4-and-5 situation: the
+    // corner still lands on some other rank, and the giveaway is that it wins
+    // by almost nothing.
+    const orphan = matchSymbol(card.rank, provenRanks(rank));
+    assert.notEqual(orphan.label, rank);
+    assert.ok(
+      orphan.margin < DEFAULTS.provenMargin,
+      `a ${card.label} was renamed ${orphan.label} by ${orphan.margin.toFixed(3)}`
+    );
+  }
+});
+
+test('a real template has to win by more than a drawn one', () => {
+  const reader = new CardReader({ ranks: {}, suits: {} });
+  const reading = (proven, margin) => ({
+    label: '5h',
+    score: 0.9,
+    margin,
+    halves: {
+      rank: { score: 0.9, margin, proven },
+      suit: { score: 0.9, margin: 0.3, proven: true },
+    },
+  });
+  const between = (DEFAULTS.minMargin + DEFAULTS.provenMargin) / 2;
+  assert.ok(reader.confident(reading(false, between)), 'a drawn glyph keeps the low bar');
+  assert.ok(!reader.confident(reading(true, between)), 'a real template does not');
+  assert.ok(reader.confident(reading(true, DEFAULTS.provenMargin + 0.01)));
+  assert.ok(!reader.confident({ ...reading(false, between), score: 0.1 }), 'and score still counts');
 });
 
 test('teaching the app a card makes the next one like it unmistakable', () => {

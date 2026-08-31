@@ -83,6 +83,9 @@ function knownTemplates() {
         width: w,
         height: h,
         aspect: entry.aspect,
+        // Lifted from photographs of a real deck, so the reader can insist on
+        // a close match instead of settling for the nearest rank.
+        proven: true,
       };
     }
   }
@@ -137,6 +140,7 @@ function decodeSymbol(entry, outW, outH) {
     width: outW,
     height: outH,
     aspect: entry.aspect,
+    proven: true, // captured from the cards on this table
   };
 }
 
@@ -184,6 +188,21 @@ export function learnedLabels() {
     ranks: Object.keys(store.ranks || {}),
     suits: Object.keys(store.suits || {}),
   };
+}
+
+/**
+ * Where each label's template comes from: a card taught on this phone, a
+ * corner that ships with the app, or nothing but a drawn glyph. The wizard
+ * shows this so the two ranks nobody has ever photographed are easy to find.
+ */
+export function templateSources() {
+  const learned = learnedLabels();
+  const sources = { ranks: {}, suits: {} };
+  for (const kind of ['ranks', 'suits']) {
+    for (const label of Object.keys(knownTemplates()[kind])) sources[kind][label] = 'deck';
+    for (const label of learned[kind]) sources[kind][label] = 'learned';
+  }
+  return sources;
 }
 
 export function learnedCount() {

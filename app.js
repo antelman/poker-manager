@@ -23,7 +23,7 @@ import {
 } from './src/store.js';
 import { CardReader, CardTracker, grayscale, sceneDifference } from './src/vision.js';
 import { TableWatch, WATCH_DEFAULTS, CLEARING, WATCHING } from './src/table-watch.js';
-import { loadDeck, saveSymbol, learnedCount, forgetDeck } from './src/deck.js';
+import { loadDeck, saveSymbol, learnedCount, forgetDeck, templateSources } from './src/deck.js';
 import { createSync, newGameCode } from './src/sync.js';
 
 /* ------------------------------------------------------------------ state */
@@ -784,6 +784,37 @@ const actions = {
     renderScanner();
   },
 
+  /**
+   * Fill the next empty slot by hand. If the camera is looking at exactly one
+   * card it could not name, that is almost certainly the card being typed, so
+   * its corner is kept under whatever name the dealer gives it.
+   */
+  'name-card'() {
+    const hand = currentHand();
+    if (!hand) return;
+    const slot = nextEmptySlot(hand);
+    if (slot === undefined) return;
+    if (scanner) {
+      const unread = scanner.detections.filter((card) => !card.label && card.symbols);
+      scanner.pendingUnread = unread.length === 1 ? unread[0].symbols : null;
+      if (!scanner.docked && scanner.mode === 'table') dockScanner();
+    }
+    cardPickerSlot = slot;
+    pickerRank = null;
+    pickerSuit = null;
+    commit();
+  },
+
+  /** Jump the wizard straight to one card. */
+  'scanner-task'(_, target) {
+    if (!scanner) return;
+    const index = Number(target.dataset.index);
+    if (!Number.isInteger(index) || !scanner.tasks[index]) return;
+    scanner.taskIndex = index;
+    scanner.message = null;
+    renderScanner();
+  },
+
   'scanner-learn'() {
     if (!scanner) return;
     scanner.panel = 'learn';
@@ -846,11 +877,16 @@ const actions = {
 
   /** A tap on the felt means whatever the title row's toggle says it means. */
   'pick-card'(_, target) {
-    if (roundInput === 'camera') {
+    const slot = Number(target.dataset.slot);
+    // With the camera driving, an empty slot is a job for it - but a card
+    // already on the felt is one the camera read, and tapping it is how the
+    // dealer says it got the card wrong. That correction is also how the app
+    // learns a card it has never managed to read.
+    if (roundInput === 'camera' && !state.game.hand?.board?.[slot]) {
       actions['scan-cards']();
       return;
     }
-    cardPickerSlot = Number(target.dataset.slot);
+    cardPickerSlot = slot;
     pickerRank = null;
     pickerSuit = null;
     commit();
@@ -1304,6 +1340,7 @@ function initRoundInput() {
 }
 
 function closePicker() {
+  if (scanner) scanner.pendingUnread = null;
   cardPickerSlot = null;
   pickerRank = null;
   pickerSuit = null;
@@ -1322,7 +1359,10 @@ function commitCardIfReady() {
   const card = pickerRank + pickerSuit;
   const existing = hand.board.indexOf(card);
   if (existing !== -1 && existing !== cardPickerSlot) hand.board[existing] = undefined;
+  const replaced = hand.board[cardPickerSlot];
   hand.board[cardPickerSlot] = card;
+  if (replaced) learnFromCorrection(replaced, card);
+  else learnFromUnread(card);
 
   const filled = hand.board.filter(Boolean).length;
   // Dealing the flop is three cards in a row, so walk to the next slot instead
@@ -1662,6 +1702,14 @@ function renderCardPicker() {
   head.append(close);
   picker.append(head);
 
+  // A card the camera put here can be corrected into a lesson, and saying so
+  // is the only way anyone would know to bother.
+  if (scanner?.placed?.has(state.game.hand?.board?.[cardPickerSlot])) {
+    picker.append(el('p', 'hint', 'המצלמה קראה את הקלף הזה. תיקון כאן גם ילמד אותה איך הוא נראה באמת.'));
+  } else if (scanner?.pendingUnread) {
+    picker.append(el('p', 'hint', 'המצלמה רואה קלף שהיא לא מצליחה לקרוא. מה שתבחר כאן ילמד אותה אותו.'));
+  }
+
   // Suit comes first so the ranks below can be drawn in it - once you have
   // picked hearts, every rank button is a red heart and there is nothing left
   // to read.
@@ -1965,6 +2013,8 @@ async function openScanner({ table = false } = {}) {
     body: null,
     proposal: [],
     dropped: new Set(),
+    placed: new Map(), // label -> the corner it was read from, for corrections
+    pendingUnread: null, // a corner the reader outlined but could not name
     detections: [],
     occupied: false,
     tasks: learnTasks(),
@@ -2452,6 +2502,14 @@ function renderCameraPanel() {
   }
 
   const actionsRow = el('div', 'camera-dock-actions');
+  // A card the reader outlines but will not name is a card the dealer has to
+  // type in - and typing it is the app's chance to learn what it looks like.
+  if (nextEmptySlot(currentHand()) !== undefined) {
+    const name = el('button', 'btn btn-ghost', 'הזן קלף ידנית');
+    name.type = 'button';
+    name.dataset.action = 'name-card';
+    actionsRow.append(name);
+  }
   const open = el('button', 'btn btn-ghost', 'פתח מצלמה');
   open.type = 'button';
   open.dataset.action = 'scan-open';
@@ -2613,7 +2671,8 @@ function renderLearnPanel(body) {
   }
 
   body.append(el('p', 'scanner-hint', `${task.hint} — קרוב, שטוח ומואר, ואז צלם.`));
-  body.append(el('span', 'scanner-note', `${scanner.taskIndex + 1} מתוך ${scanner.tasks.length}`));
+  body.append(el('span', 'scanner-note', 'אפשר לקפוץ לכל קלף. מלא = יש לאפליקציה פינה אמיתית שלו.'));
+  body.append(learnPicker());
 
   const actionsRow = el('div', 'scanner-actions');
   const capture = el('button', 'btn btn-primary btn-lg', 'צלם');
@@ -2638,7 +2697,45 @@ function renderLearnPanel(body) {
   body.append(actionsRow);
 }
 
+/**
+ * Every card the wizard can teach, with the ones it already knows marked.
+ *
+ * Walking thirteen ranks in a fixed order to reach the one card that reads
+ * wrong is not something anyone will do twice, and the app ships knowing all
+ * but two ranks - so the list has to say which two, and let them be picked.
+ */
+function learnPicker() {
+  const sources = templateSources();
+  const wrap = el('div', 'learn-picker');
+  const grid = el('div', 'learn-grid');
+  const suitRow = el('div', 'learn-grid is-suits');
+  scanner.tasks.forEach((task, index) => {
+    const suit = task.kind === 'suits' ? SUITS.find((s) => s.id === task.label) : null;
+    const source = sources[task.kind][task.label];
+    const button = el('button', `learn-chip is-${source || 'drawn'}`);
+    button.type = 'button';
+    button.dataset.action = 'scanner-task';
+    button.dataset.index = String(index);
+    if (index === scanner.taskIndex) button.classList.add('is-current');
+    if (suit) button.classList.add('hd'.includes(suit.id) ? 'red' : 'black');
+    button.append(el('span', null, suit ? suit.glyph : task.label));
+    const state =
+      source === 'learned' ? 'נלמד כאן' : source === 'deck' ? 'יש פינה אמיתית' : 'רק ניחוש מצויר';
+    button.setAttribute('aria-label', `${suit ? suit.name : task.label} - ${state}`);
+    (suit ? suitRow : grid).append(button);
+  });
+  wrap.append(grid);
+  wrap.append(suitRow);
+  return wrap;
+}
+
 /* ------------------------------------------------------------- committing */
+
+/** The first slot on the felt with no card in it, if there is one. */
+function nextEmptySlot(hand) {
+  if (!hand) return undefined;
+  return [0, 1, 2, 3, 4].find((index) => !hand.board[index]);
+}
 
 /** Put scanned cards into the empty board slots, in the order they were seen. */
 function addCardsToBoard(labels) {
@@ -2648,9 +2745,10 @@ function addCardsToBoard(labels) {
   let added = 0;
   for (const label of labels) {
     if (hand.board.includes(label)) continue;
-    const slot = [0, 1, 2, 3, 4].find((index) => !hand.board[index]);
+    const slot = nextEmptySlot(hand);
     if (slot === undefined) break;
     hand.board[slot] = label;
+    rememberPlacement(label, hand);
     added++;
   }
   if (added === 0) return 0;
@@ -2691,6 +2789,75 @@ function undoAutoCards() {
 }
 
 /* --------------------------------------------------------------- learning */
+
+/**
+ * Keep the corner a card was read from, for as long as it is on the felt.
+ *
+ * This is what makes a correction worth something: if the camera calls a five
+ * a three, the pixels it got that wrong from are the best possible template
+ * for a five - they are this deck, in this light, at this distance.
+ */
+function rememberPlacement(label, hand) {
+  if (!scanner) return;
+  const seen = scanner.detections.find((card) => card.label === label && card.symbols);
+  if (!seen) return;
+  scanner.placed.set(label, { ...seen.symbols, hand: hand.n });
+  // Only the current round's cards can be corrected, so the map stays tiny.
+  while (scanner.placed.size > 10) scanner.placed.delete(scanner.placed.keys().next().value);
+}
+
+/**
+ * The dealer just fixed a card the camera put on the felt. Take him at his
+ * word and keep the corner under the name he gave it, so the next one like it
+ * reads right by itself - which is how the ranks no photograph of the deck
+ * ever contained get learned, without a wizard and without a photo session.
+ */
+function learnFromCorrection(wrong, right) {
+  if (!scanner || !wrong || wrong === right) return;
+  const hand = currentHand();
+  const seen = scanner.placed.get(wrong);
+  scanner.placed.delete(wrong);
+  if (!seen || !hand || seen.hand !== hand.n) return;
+
+  const learned = [];
+  if (wrong.slice(0, -1) !== right.slice(0, -1) && saveSymbol('ranks', right.slice(0, -1), seen.rank)) {
+    learned.push(right.slice(0, -1));
+  }
+  if (wrong.slice(-1) !== right.slice(-1) && saveSymbol('suits', right.slice(-1), seen.suit)) {
+    const suit = SUITS.find((s) => s.id === right.slice(-1));
+    learned.push(suit ? suit.glyph : right.slice(-1));
+  }
+  if (learned.length === 0) return;
+
+  scanner.reader.setTemplates(loadDeck());
+  scanner.tracker.reset(); // the old reading is in its history, and is wrong
+  scanner.watch.seen.delete(wrong);
+  scanner.watch.seen.add(right);
+  scanner.placed.set(right, { ...seen, hand: hand.n });
+  toast(`נלמד מהתיקון: ${learned.join(' ')}`);
+}
+
+/**
+ * The dealer named a card the camera was looking at but could not read. Both
+ * halves of that corner are now known, so keep both: this is the way in for a
+ * rank the app has no template of its own for at all.
+ */
+function learnFromUnread(label) {
+  if (!scanner?.pendingUnread) return;
+  const symbols = scanner.pendingUnread;
+  scanner.pendingUnread = null;
+  const learned = [];
+  if (saveSymbol('ranks', label.slice(0, -1), symbols.rank)) learned.push(label.slice(0, -1));
+  if (saveSymbol('suits', label.slice(-1), symbols.suit)) {
+    const suit = SUITS.find((s) => s.id === label.slice(-1));
+    learned.push(suit ? suit.glyph : label.slice(-1));
+  }
+  if (learned.length === 0) return;
+  scanner.reader.setTemplates(loadDeck());
+  scanner.tracker.reset();
+  scanner.watch.seen.add(label);
+  toast(`נלמד מהשולחן: ${learned.join(' ')}`);
+}
 
 function captureTemplate() {
   if (!scanner?.lastFrame) return;

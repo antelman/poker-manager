@@ -97,6 +97,20 @@ export const DEFAULTS = {
    */
   minScore: 0.68,
   minMargin: 0.025,
+  /**
+   * How far ahead a template lifted from the real deck has to be.
+   *
+   * A card the app has no template of its own for - the 4 and the 5, which no
+   * photograph of the deck contained - still matches *something*, and the
+   * something is another rank's real corner. What gives it away is that
+   * nothing stands out: dropping each rank's real template in turn and reading
+   * the photographs again, the wrong answers win by 0.03 or less, and the one
+   * real misread in the whole corpus won by 0.056 - while every card whose own
+   * template is there wins by 0.087 and up, blurred phone frames included.
+   * This sits in that gap. A drawn glyph keeps the lower bar: it only ever
+   * approximates the printed index, so it wins its own card by a hair.
+   */
+  provenMargin: 0.07,
   /** Frames a card must read the same way before it is reported. */
   stableFrames: 3,
   history: 6,
@@ -927,9 +941,9 @@ export function baseLabel(key) {
 }
 
 export function matchSymbol(symbol, templates, allowed, weights = WEIGHTS.rank) {
-  if (!symbol) return { label: null, score: 0, margin: 0 };
+  if (!symbol) return { label: null, score: 0, margin: 0, proven: false };
 
-  let best = { label: null, score: -1 };
+  let best = { label: null, score: -1, proven: false };
   let second = -1;
   const symbolDistance = distanceTransform(symbol.bits, symbol.width, symbol.height);
   for (const [key, template] of Object.entries(templates)) {
@@ -972,12 +986,19 @@ export function matchSymbol(symbol, templates, allowed, weights = WEIGHTS.rank) 
     // the same rank agreeing is not an ambiguity, it is a confirmation.
     if (score > best.score) {
       if (best.label !== null && best.label !== label) second = Math.max(second, best.score);
-      best = { label, score };
+      best = { label, score, proven: Boolean(template.proven) };
     } else if (label !== best.label && score > second) {
       second = score;
     }
   }
-  return { label: best.label, score: Math.max(0, best.score), margin: Math.max(0, best.score - second) };
+  return {
+    label: best.label,
+    score: Math.max(0, best.score),
+    margin: Math.max(0, best.score - second),
+    // Whether the winner is a photograph of the real card or a drawn guess at
+    // it; the reader holds the two to different standards.
+    proven: best.proven,
+  };
 }
 
 /* ------------------------------------------------------------------ reader */
@@ -986,7 +1007,7 @@ export function matchSymbol(symbol, templates, allowed, weights = WEIGHTS.rank) 
  * One card the camera can see: where it is, and what it reads as.
  * `label` stays null until both halves are read confidently.
  */
-function detection(quad, rank, suit, red) {
+function detection(quad, rank, suit, red, symbols = null) {
   const label = rank.label && suit.label ? rank.label + suit.label : null;
   const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) / 4;
   const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
@@ -997,6 +1018,13 @@ function detection(quad, rank, suit, red) {
     red,
     score: Math.min(rank.score, suit.score),
     margin: Math.min(rank.margin, suit.margin),
+    halves: {
+      rank: { score: rank.score, margin: rank.margin, proven: Boolean(rank.proven) },
+      suit: { score: suit.score, margin: suit.margin, proven: Boolean(suit.proven) },
+    },
+    // The corner this reading came from, kept so that a card the dealer
+    // corrects by hand can be learned from instead of just fixed.
+    symbols: symbols ? { rank: symbols.rank, suit: symbols.suit } : null,
     quad,
     center: { x: cx, y: cy },
   };
@@ -1077,6 +1105,20 @@ export class CardReader {
     return symbolsFromCorner(patch, { local: true }) || crisp;
   }
 
+  /** How far ahead this half has to be, which is more for a real template. */
+  bar(half) {
+    return half.proven ? this.options.provenMargin : this.options.minMargin;
+  }
+
+  /** Is this reading worth putting a name on? */
+  confident(reading) {
+    if (!reading.label) return false;
+    if (reading.score < this.options.minScore) return false;
+    const halves = reading.halves;
+    if (!halves) return reading.margin >= this.options.minMargin;
+    return halves.rank.margin >= this.bar(halves.rank) && halves.suit.margin >= this.bar(halves.suit);
+  }
+
   /**
    * Read the frame: card outlines, plus a name for the ones it is sure of.
    *
@@ -1123,7 +1165,7 @@ export class CardReader {
             symbols.red ? RED_SUITS : BLACK_SUITS,
             this.weights.suit
           );
-          const reading = detection(corners, rank, suit, symbols.red);
+          const reading = detection(corners, rank, suit, symbols.red, symbols);
           if (!best || reading.score > best.score) best = reading;
         }
       }
@@ -1132,9 +1174,7 @@ export class CardReader {
       }
       // Refuse to name a card that is only just ahead of the runner-up: a
       // silent misread is worse than an outline the dealer taps in himself.
-      if (best.score < this.options.minScore || best.margin < this.options.minMargin) {
-        best = { ...best, label: null, rank: null, suit: null };
-      }
+      if (!this.confident(best)) best = { ...best, label: null, rank: null, suit: null };
       cards.push(best);
     }
 
