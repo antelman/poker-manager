@@ -69,7 +69,9 @@ export const WEIGHTS = {
 export const DEFAULTS = {
   /** Blob sizes worth looking at, as a fraction of the frame. */
   minAreaFrac: 0.0025,
-  maxAreaFrac: 0.35,
+  // A card held up to the camera to teach the app fills most of the frame, and
+  // rejecting it for being too big is how the wizard used to fail.
+  maxAreaFrac: 0.8,
   /**
    * How much of its own quad a blob has to fill, and how far its outline may
    * wander from that quad. Both are set against real cards rather than drawn
