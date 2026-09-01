@@ -263,6 +263,25 @@ export function callAmount(player, game) {
   return Math.max(0, Math.min(owed, available));
 }
 
+/** Which seat in the list holds the button right now. */
+export function dealerIndexOf(game) {
+  const count = game.players?.length || 0;
+  if (count === 0) return null;
+  return ((game.dealerIndex ?? 0) % count + count) % count;
+}
+
+/**
+ * Where the button goes when a round closes.
+ *
+ * Returns the same seat at a table of one - there is nowhere for the button to
+ * go - so callers can tell a real move from a table that cannot rotate.
+ */
+export function nextDealerIndex(game) {
+  const count = game.players?.length || 0;
+  if (count === 0) return null;
+  return (dealerIndexOf(game) + 1) % count;
+}
+
 /**
  * Blinds for a new hand, posted by the two seats after the dealer.
  * Heads-up (two players) posts the small blind on the dealer, as it is played.

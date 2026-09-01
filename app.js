@@ -7,6 +7,8 @@ import {
   leaderboard,
   newHand,
   playerStackChips,
+  dealerIndexOf,
+  nextDealerIndex,
   STREETS,
 } from './src/engine.js';
 
@@ -919,8 +921,11 @@ const actions = {
     cardPickerSlot = null;
     pickerRank = null;
     pickerSuit = null;
-    actions['next-dealer']();
-    toast('הסיבוב נסגר, הדילר עבר לשחקן הבא');
+    const moved = actions['next-dealer']();
+    const dealer = dealerName();
+    // Say what actually happened: at a table of one the button has nowhere
+    // to go, and claiming it moved is how you end up trusting the wrong seat.
+    toast(moved && dealer ? `הסיבוב נסגר, הדילר עבר אל ${dealer}` : 'הסיבוב נסגר');
   },
 
   /* ---- seating ---- */
@@ -969,11 +974,14 @@ const actions = {
     commit();
   },
 
+  /** Pass the button one seat along. Answers whether it actually moved. */
   'next-dealer'() {
-    const count = state.game.players.length;
-    if (count === 0) return;
-    state.game.dealerIndex = ((state.game.dealerIndex ?? 0) + 1) % count;
+    const before = dealerIndexOf(state.game);
+    const after = nextDealerIndex(state.game);
+    if (after === null) return false;
+    state.game.dealerIndex = after;
     commit();
+    return after !== before;
   },
 
   /* ---- filling the end-of-night count from the tracked stacks ---- */
@@ -1388,10 +1396,8 @@ function currentHand() {
 }
 
 function dealerPlayer() {
-  const players = state.game.players;
-  if (players.length === 0) return null;
-  const index = ((state.game.dealerIndex ?? 0) % players.length + players.length) % players.length;
-  return players[index] ?? null;
+  const index = dealerIndexOf(state.game);
+  return index === null ? null : state.game.players[index] ?? null;
 }
 
 function dealerName() {

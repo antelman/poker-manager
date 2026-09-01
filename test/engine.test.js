@@ -349,6 +349,25 @@ test('activePlayers drops anyone who folded', () => {
   assert.deepEqual(activePlayers(g).map((p) => p.id), ['a']);
 });
 
+import { dealerIndexOf, nextDealerIndex } from '../src/engine.js';
+
+test('the button moves one seat along, and wraps at the end of the table', () => {
+  const players = ['a', 'b', 'c'].map((id) => ({ id, name: id, buyIns: [] }));
+  assert.equal(nextDealerIndex({ players, dealerIndex: 0 }), 1);
+  assert.equal(nextDealerIndex({ players, dealerIndex: 2 }), 0);
+
+  // An index left over from a bigger table still reads as the seat it shows.
+  assert.equal(dealerIndexOf({ players, dealerIndex: 5 }), 2);
+  assert.equal(nextDealerIndex({ players, dealerIndex: 5 }), 0);
+});
+
+test('the button has nowhere to go at a table of one', () => {
+  const players = [{ id: 'a', name: 'a', buyIns: [] }];
+  assert.equal(nextDealerIndex({ players, dealerIndex: 0 }), 0);
+  assert.equal(nextDealerIndex({ players: [], dealerIndex: 0 }), null);
+  assert.equal(dealerIndexOf({ players: [] }), null);
+});
+
 test('blindBets posts on the two seats after the dealer', () => {
   const players = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id, buyIns: [] }));
   const g = { ...handGame(players, null), blinds: { small: 1, big: 2 }, dealerIndex: 0 };
